@@ -7,8 +7,10 @@ import recordingHandler from '../voice/recordingHandler.js';
 
 const router = Router();
 
-// Twilio 外呼时请求的 TwiML（AI 用日语与餐厅沟通）
+// Twilio 外呼时请求的 TwiML（AI 用日语与餐厅沟通）；GET/POST 都支持
+router.get('/voice/:orderNo', voiceHandler);
 router.post('/voice/:orderNo', voiceHandler);
+router.get('/voice/:orderNo/done', voiceDoneHandler);
 router.post('/voice/:orderNo/done', voiceDoneHandler);
 
 // 通话结束后的状态回调（可选，用于更新 call status）

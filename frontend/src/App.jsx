@@ -22,8 +22,11 @@ export default function App() {
   return (
     <div className="app">
       <header className="header">
-        <h1>日本餐厅 AI 代预约</h1>
-        <p className="tagline">不会日语？AI 帮您用日语致电餐厅预约</p>
+        <div className="header-image" />
+        <div className="header-text">
+          <h1>🥢 日本餐厅 AI 代预约</h1>
+          <p className="tagline">不会日语？AI 帮您用日语致电餐厅预约</p>
+        </div>
       </header>
 
       <main className="main">

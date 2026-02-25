@@ -226,7 +226,7 @@ export function BookingForm({ onSubmit, apiBase }) {
 
       {error && <p className="form-error">{error}</p>}
       <button type="submit" className="btn-primary" disabled={loading}>
-        {loading ? '提交中…' : '免费提交并代打电话'}
+        {loading ? '提交中…' : '帮我订'}
       </button>
     </form>
   );
