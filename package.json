@@ -1,0 +1,14 @@
+{
+  "name": "motbot-aijp-reservation",
+  "private": true,
+  "description": "日本餐厅 AI 代打电话预约",
+  "scripts": {
+    "build": "cd frontend && npm ci && npm run build && cd ../backend && npm ci",
+    "start": "cd backend && node server.js",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

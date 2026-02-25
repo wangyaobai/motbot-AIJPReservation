@@ -1,0 +1,228 @@
+.app {
+  max-width: 480px;
+  margin: 0 auto;
+  min-height: 100vh;
+  padding: 0 16px 24px;
+}
+.header {
+  padding: 24px 0 16px;
+  text-align: center;
+  background: linear-gradient(180deg, rgba(255, 237, 213, 0.6) 0%, transparent 100%);
+  margin: 0 -16px 0;
+  padding-left: 16px;
+  padding-right: 16px;
+  border-radius: 0 0 20px 20px;
+}
+.header h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0 0 6px;
+  letter-spacing: 0.02em;
+  color: var(--text);
+}
+.tagline {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin: 0 0 12px;
+}
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+.link-btn:hover {
+  text-decoration: underline;
+}
+a.link-btn {
+  text-decoration: none;
+}
+a.link-btn:hover {
+  text-decoration: underline;
+}
+.main {
+  margin-top: 8px;
+}
+
+.card {
+  background: var(--card);
+  border-radius: 14px;
+  padding: 18px;
+  margin-bottom: 16px;
+  border: 1px solid var(--border);
+  box-shadow: 0 2px 12px rgba(232, 93, 4, 0.06);
+}
+.card h2 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0 0 14px;
+  color: var(--text);
+}
+.form-row {
+  margin-bottom: 14px;
+}
+.form-row:last-child {
+  margin-bottom: 0;
+}
+.form-row label {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.form-row input,
+.form-row select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+}
+.form-row input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.8;
+}
+.form-row input:focus,
+.form-row select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.restaurant-name-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.restaurant-name-row input {
+  flex: 1;
+  min-width: 0;
+}
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+.check-row input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent);
+}
+.check-row span {
+  font-size: 0.9rem;
+  color: var(--text);
+}
+.btn-primary {
+  width: 100%;
+  padding: 14px;
+  font-size: 1rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #f97316 0%, var(--accent) 100%);
+  color: #fff;
+  cursor: pointer;
+  margin-top: 8px;
+  box-shadow: 0 4px 14px rgba(232, 93, 4, 0.35);
+}
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.btn-primary.secondary {
+  background: #fff;
+  color: var(--accent);
+  border: 2px solid var(--border);
+  margin-top: 10px;
+  box-shadow: none;
+}
+.btn-primary.secondary:hover {
+  background: var(--accent-soft);
+}
+.btn-search {
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--accent);
+  cursor: pointer;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.btn-search:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.search-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+  background: #fff;
+}
+.search-list li button {
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.search-list li button:hover {
+  background: var(--accent-soft);
+}
+.search-list .phone {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--accent);
+}
+.search-list .addr {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.form-error {
+  color: #c2410c;
+  font-size: 0.9rem;
+  margin: 0 0 12px;
+}
+.order-no, .status {
+  font-size: 0.9rem;
+  margin: 0 0 8px;
+}
+.order-summary {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 12px;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+.order-summary li { margin-bottom: 4px; }
+.order-summary .summary { margin-top: 8px; color: var(--text); }
+.hint {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin: 0 0 12px;
+}
+.order-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.order-item {
+  border-bottom: 1px solid var(--border);
+  padding: 12px 0;
+  font-size: 0.9rem;
+}
+.order-item:last-child { border-bottom: none; }
+.order-item .summary { color: var(--text-muted); font-size: 0.85rem; }
+.text-muted { color: var(--text-muted); font-size: 0.9rem; }

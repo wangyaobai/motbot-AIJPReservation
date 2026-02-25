@@ -1,0 +1,21 @@
+{
+  "name": "restaurant-booking-backend",
+  "version": "1.0.0",
+  "description": "AI 代打电话预约日本餐厅 - 后端",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "init-db": "node scripts/init-db.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.6.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "form-data": "^4.0.0",
+    "openai": "^4.73.0",
+    "twilio": "^5.3.4"
+  }
+}
