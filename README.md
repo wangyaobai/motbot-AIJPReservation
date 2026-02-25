@@ -60,7 +60,8 @@ npm run dev
 | `TWILIO_AUTH_TOKEN` | 是 | Twilio 认证 Token |
 | `TWILIO_PHONE_NUMBER` | 是 | Twilio 主叫号码（需支持语音） |
 | `OPENAI_API_KEY` | 推荐 | 用于录音转写与摘要；不填则仅保存录音、不发摘要 |
-| `GOOGLE_PLACES_API_KEY` | 否 | 用于按店名搜索餐厅电话；不填则仅支持用户手动输入电话 |
+| `DEEPSEEK_API_KEY` | 推荐 | 用 DeepSeek 从搜索结果中智能提取餐厅电话；不填则仅用正则从片段中解析 |
+| `SERPER_API_KEY` | 否 | 搜索片段来源（[Serper](https://serper.dev)）；不填则用 DuckDuckGo 抓取，再配合 DeepSeek 提取电话 |
 
 ## 同步到 GitHub
 

@@ -190,6 +190,38 @@ a.link-btn:hover {
   font-size: 0.8rem;
   color: var(--text-muted);
 }
+.search-list .result-url {
+  display: inline-block;
+  font-size: 0.8rem;
+  color: var(--accent);
+  margin-top: 4px;
+}
+.search-url-box {
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--accent-soft);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.search-url-hint {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin: 0 0 10px;
+}
+.btn-open-search {
+  display: inline-block;
+  padding: 10px 16px;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 8px;
+  font-weight: 600;
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+.btn-open-search:hover {
+  opacity: 0.9;
+  color: #fff;
+}
 .form-error {
   color: #c2410c;
   font-size: 0.9rem;

@@ -7,6 +7,7 @@ export function BookingForm({ onSubmit, apiBase }) {
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
+  const [searchUrl, setSearchUrl] = useState('');
 
   const [bookingDate, setBookingDate] = useState('');
   const [bookingTime, setBookingTime] = useState('');
@@ -27,10 +28,12 @@ export function BookingForm({ onSubmit, apiBase }) {
     setSearchError('');
     setSearching(true);
     setSearchResults([]);
+    setSearchUrl('');
     try {
       const res = await fetch(`${apiBase}/search/restaurant?q=${encodeURIComponent(q)}`);
       const data = await res.json();
       setSearchResults(data.places || []);
+      if (data.searchUrl) setSearchUrl(data.searchUrl);
       if (data.message) setSearchError(data.message);
     } catch {
       setSearchResults([]);
@@ -105,16 +108,29 @@ export function BookingForm({ onSubmit, apiBase }) {
           {searchError && <p className="form-error">{searchError}</p>}
           {searchResults.length > 0 && (
             <ul className="search-list">
-              {searchResults.map((p) => (
-                <li key={p.place_id || p.name}>
+              {searchResults.map((p, i) => (
+                <li key={p.place_id || p.url || i}>
                   <button type="button" onClick={() => pickPlace(p)}>
                     <strong>{p.name}</strong>
                     {p.phone && <span className="phone">{p.phone}</span>}
                     {p.address && <span className="addr">{p.address}</span>}
+                    {p.url && (
+                      <span className="result-url" onClick={(e) => { e.stopPropagation(); window.open(p.url, '_blank'); }}>
+                        打开链接
+                      </span>
+                    )}
                   </button>
                 </li>
               ))}
             </ul>
+          )}
+          {searchUrl && searchResults.length === 0 && (
+            <div className="search-url-box">
+              <p className="search-url-hint">未解析到电话，可在浏览器中搜索后把找到的电话填到下方「餐厅电话」</p>
+              <a href={searchUrl} target="_blank" rel="noopener noreferrer" className="btn-open-search">
+                在浏览器中打开搜索
+              </a>
+            </div>
           )}
         </div>
         <div className="form-row">
