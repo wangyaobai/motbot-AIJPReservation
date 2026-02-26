@@ -25,14 +25,15 @@ router.post('/', (req, res) => {
     }
 
     const orderNo = generateOrderNo();
+    const userId = req.userId || null;
     const stmt = db.prepare(`
       INSERT INTO orders (
         order_no, restaurant_name, restaurant_phone,
         booking_date, booking_time, party_size,
         flexible_hour, want_set_meal,
         contact_name, contact_phone, contact_phone_region,
-        status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+        status, user_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending_pay', ?)
     `);
     stmt.run(
       orderNo,
@@ -46,6 +47,7 @@ router.post('/', (req, res) => {
       contact_name,
       contact_phone,
       contact_phone_region === 'jp' ? 'jp' : 'cn',
+      userId,
     );
 
     const row = db.prepare('SELECT * FROM orders WHERE order_no = ?').get(orderNo);
@@ -56,7 +58,37 @@ router.post('/', (req, res) => {
   }
 });
 
-// 根据用户名/手机查询订单列表（后台用）
+// 管理后台：订单列表（支持按状态、按用户 user_id 筛选）
+router.get('/', (req, res) => {
+  try {
+    const { status: statusFilter, user_id: userId } = req.query;
+    let sql = 'SELECT * FROM orders WHERE 1=1';
+    const params = [];
+    if (userId) {
+      sql += ' AND user_id = ?';
+      params.push(userId);
+    }
+    if (statusFilter && statusFilter !== 'all') {
+      if (statusFilter === 'pending_pay') {
+        sql += ' AND status = ?';
+        params.push('pending_pay');
+      } else if (statusFilter === 'booking') {
+        sql += " AND status IN ('pending', 'calling')";
+      } else if (['completed', 'failed', 'cancelled'].includes(statusFilter)) {
+        sql += ' AND status = ?';
+        params.push(statusFilter);
+      }
+    }
+    sql += ' ORDER BY created_at DESC';
+    const rows = db.prepare(sql).all(...params);
+    res.json({ ok: true, orders: rows });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ ok: false, message: e.message || '查询失败' });
+  }
+});
+
+// 根据用户名/手机查询订单列表
 router.get('/by-user', (req, res) => {
   try {
     const { contact_name, contact_phone } = req.query;
@@ -88,13 +120,30 @@ router.get('/:orderNo', (req, res) => {
   }
 });
 
+// 确认支付（占位：暂不接真实支付，后续可对接支付回调）
+router.post('/:orderNo/confirm-payment', (req, res) => {
+  try {
+    const order = db.prepare('SELECT * FROM orders WHERE order_no = ?').get(req.params.orderNo);
+    if (!order) return res.status(404).json({ ok: false, message: '订单不存在' });
+    if (order.status !== 'pending_pay') {
+      return res.status(400).json({ ok: false, message: '当前订单状态无需支付' });
+    }
+    db.prepare("UPDATE orders SET status = 'pending', updated_at = datetime('now') WHERE id = ?").run(order.id);
+    const updated = db.prepare('SELECT * FROM orders WHERE order_no = ?').get(req.params.orderNo);
+    res.json({ ok: true, order: updated });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ ok: false, message: e.message || '操作失败' });
+  }
+});
+
 // 触发 AI 外呼（拨打电话给餐厅）
 router.post('/:orderNo/call', async (req, res) => {
   try {
     const order = db.prepare('SELECT * FROM orders WHERE order_no = ?').get(req.params.orderNo);
     if (!order) return res.status(404).json({ ok: false, message: '订单不存在' });
     if (order.status !== 'pending') {
-      return res.status(400).json({ ok: false, message: '当前订单状态不允许发起通话' });
+      return res.status(400).json({ ok: false, message: '请先完成支付后再发起通话' });
     }
 
     const sid = process.env.TWILIO_ACCOUNT_SID;
@@ -134,6 +183,26 @@ router.post('/:orderNo/call', async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ ok: false, message: e.message || '发起通话失败' });
+  }
+});
+
+// 管理员取消订单（未成功前可取消）
+router.post('/:orderNo/cancel', (req, res) => {
+  try {
+    const order = db.prepare('SELECT * FROM orders WHERE order_no = ?').get(req.params.orderNo);
+    if (!order) return res.status(404).json({ ok: false, message: '订单不存在' });
+    if (order.status === 'completed') {
+      return res.status(400).json({ ok: false, message: '预约已成功，不可取消' });
+    }
+    if (order.status === 'cancelled') {
+      return res.status(400).json({ ok: false, message: '订单已取消' });
+    }
+    db.prepare("UPDATE orders SET status = 'cancelled', updated_at = datetime('now') WHERE id = ?").run(order.id);
+    const updated = db.prepare('SELECT * FROM orders WHERE order_no = ?').get(req.params.orderNo);
+    res.json({ ok: true, order: updated });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ ok: false, message: e.message || '取消失败' });
   }
 });
 

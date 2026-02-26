@@ -5,6 +5,124 @@
   padding: 0 16px 24px;
   width: 100%;
 }
+
+/* 通用标题栏：首页/预约页用，标题严格居中，右侧小图标+文字 */
+.title-bar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 16px;
+}
+.title-bar-center {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.title-bar-left {
+  width: 100px;
+  min-width: 100px;
+  flex-shrink: 0;
+}
+.title-bar-inner {
+  flex: 1;
+  text-align: center;
+  min-width: 0;
+}
+.title-bar-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0 0 4px;
+  letter-spacing: 0.02em;
+  color: var(--text);
+}
+.title-bar-subtitle {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin: 0;
+}
+.title-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  width: 100px;
+  min-width: 100px;
+  justify-content: flex-end;
+  margin-right: -4px;
+}
+.title-bar-action {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 4px;
+  border-radius: 8px;
+  text-decoration: none;
+  font-size: 0.7rem;
+  color: var(--accent);
+}
+.title-bar-action:hover {
+  background: var(--accent-soft);
+  color: var(--accent-dim);
+}
+.title-bar-action svg {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+.title-bar-action:hover svg {
+  color: var(--accent-dim);
+}
+/* 标题栏下方背景图（原头部图） */
+.title-bar-banner {
+  width: 100%;
+  height: 160px;
+  background-image: url("/桌面餐厅图.jpg");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  border-radius: 0 0 16px 16px;
+  overflow: hidden;
+}
+
+/* 内页标题栏：左侧返回，中间标题 */
+.title-bar-with-back {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 48px;
+}
+.title-bar-back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin: -8px 0 -8px -8px;
+  background: none;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  border-radius: 8px;
+}
+.title-bar-back:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.title-bar-heading {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0;
+  color: var(--text);
+}
+.title-bar-placeholder {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+}
+
 .header {
   width: 100%;
   border-radius: 0 0 16px 16px;
@@ -282,3 +400,240 @@ a.link-btn:hover {
 .order-item:last-child { border-bottom: none; }
 .order-item .summary { color: var(--text-muted); font-size: 0.85rem; }
 .text-muted { color: var(--text-muted); font-size: 0.9rem; }
+
+/* 管理后台：白底简洁，无头图底图 */
+.admin-root {
+  min-height: 100vh;
+  background: #fff;
+}
+.admin-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e8e8e8;
+  background: #fff;
+}
+.admin-header h1 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+.admin-main {
+  padding: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+.admin-query {
+  width: 100%;
+}
+.admin-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.filter-label { font-size: 0.9rem; color: #666; white-space: nowrap; }
+.filter-select {
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: #fff;
+  color: #1a1a1a;
+  min-width: 120px;
+  font-size: 0.9rem;
+}
+.btn-refresh {
+  padding: 8px 16px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: #fff;
+  color: #1a1a1a;
+  font-weight: 500;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.btn-refresh:hover:not(:disabled) { background: #f5f5f5; }
+.btn-refresh:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* 订单卡片操作按钮 */
+.btn-detail { background: linear-gradient(180deg, #f97316 0%, var(--accent) 100%); color: #fff; border: none; padding: 8px 16px; border-radius: 8px; font-weight: 600; cursor: pointer; text-decoration: none; display: inline-block; font-size: 0.9rem; }
+.btn-detail:hover { opacity: 0.95; color: #fff; }
+.btn-cancel-booking { background: #f0e6dc; color: var(--text-muted); border: none; padding: 8px 16px; border-radius: 8px; font-weight: 500; cursor: pointer; font-size: 0.9rem; }
+.btn-cancel-booking:hover:not(:disabled) { background: var(--border); color: var(--text); }
+.btn-cancel-booking:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* Tab 切换（我的订单页：白底） */
+.tabs-wrap {
+  background: #fff;
+  margin: 0 -16px 12px;
+  padding: 0 16px 10px;
+  border-bottom: 1px solid var(--border);
+  overflow: visible;
+}
+.tabs {
+  display: flex;
+  gap: 0;
+  overflow-x: auto;
+  overflow-y: visible;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 0 8px;
+  margin: 0;
+  min-height: 36px;
+  align-items: flex-end;
+}
+.tabs::-webkit-scrollbar { height: 4px; }
+.tab {
+  position: relative;
+  flex-shrink: 0;
+  padding: 8px 14px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  cursor: pointer;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+.tab:hover { color: var(--text); background: var(--accent-soft); }
+.tab.active {
+  color: #e85d04;
+  font-weight: 600;
+  background: transparent;
+}
+/* 选中态：简单 5px 粗橙色下划线 */
+.tab.active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -8px;
+  height: 5px;
+  background: #e85d04;
+  z-index: 1;
+}
+
+/* 订单卡片：主标题 + 副标题行 */
+.order-card-title { font-weight: 700; font-size: 1rem; margin: 0 0 10px; display: block; }
+.order-card-row { font-size: 0.9rem; margin: 0 0 6px; }
+.order-card-label { color: var(--text-muted); margin-right: 6px; }
+.order-card-value { color: var(--text); }
+
+/* 订单详情：副标题 + 信息 */
+.order-detail-dl { display: flex; flex-direction: column; gap: 12px; }
+.order-detail-row { margin: 0; display: flex; flex-direction: column; gap: 4px; }
+.order-detail-label { margin: 0; font-size: 0.85rem; color: var(--text-muted); font-weight: normal; }
+.order-detail-value { margin: 0; font-size: 0.95rem; color: var(--text); }
+
+/* 个人中心：信息卡片 */
+.profile-info-card .profile-row { margin-bottom: 14px; }
+.profile-info-card .profile-row:last-child { margin-bottom: 0; }
+.profile-label { display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 4px; }
+.profile-value { font-size: 1rem; font-weight: 600; color: var(--text); }
+.profile-action-item:hover { background: var(--accent-soft); }
+.profile-action-btn:hover { background: var(--accent-soft); }
+
+.admin-table-wrap {
+  overflow-x: auto;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  background: #fff;
+}
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+.admin-table th,
+.admin-table td {
+  padding: 12px 14px;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+}
+.admin-table th {
+  background: #fafafa;
+  color: #1a1a1a;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.admin-table tbody tr:last-child td { border-bottom: none; }
+.admin-table .td-order-no { font-family: monospace; font-size: 0.8rem; max-width: 140px; word-break: break-all; }
+.admin-table .td-restaurant .name,
+.admin-table .td-contact .name { display: block; }
+.admin-table .td-restaurant .sub,
+.admin-table .td-contact .sub { display: block; font-size: 0.8rem; color: #666; margin-top: 2px; }
+.admin-table .td-restaurant,
+.admin-table .td-contact { max-width: 120px; }
+.admin-table .td-actions { white-space: nowrap; }
+.admin-table .btn-link {
+  background: none;
+  border: none;
+  color: #1890ff;
+  cursor: pointer;
+  padding: 0 8px;
+  font-size: 0.875rem;
+}
+.admin-table .btn-link.danger { color: #c2410c; }
+.admin-table .btn-link + .btn-link { margin-left: 4px; }
+.admin-table .empty-td { text-align: center; color: #999; padding: 32px; }
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+}
+.modal-content {
+  background: #fff;
+  border-radius: 8px;
+  max-width: 420px;
+  width: 100%;
+  max-height: 90vh;
+  overflow: auto;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.15);
+}
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #eee;
+}
+.modal-header h3 { margin: 0; font-size: 1.1rem; color: #1a1a1a; }
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  color: #999;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+.modal-body { padding: 20px; }
+.detail-dl { margin: 0; font-size: 0.9rem; }
+.detail-dl dt {
+  margin-top: 14px;
+  color: #666;
+  font-weight: normal;
+  font-size: 0.85rem;
+}
+.detail-dl dt:first-child { margin-top: 0; }
+.detail-dl dd { margin: 4px 0 0; color: #1a1a1a; }
+.modal-body .btn-cancel-order {
+  margin-top: 20px;
+  padding: 10px 20px;
+  border: 1px solid #ff4d4f;
+  border-radius: 6px;
+  background: #fff;
+  color: #ff4d4f;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.modal-body .btn-cancel-order:hover:not(:disabled) { background: #fff2f0; }
+.modal-body .btn-cancel-order:disabled { opacity: 0.6; cursor: not-allowed; }

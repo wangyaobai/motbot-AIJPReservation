@@ -37,6 +37,45 @@ export function ensureSchema() {
     CREATE INDEX IF NOT EXISTS idx_orders_contact ON orders(contact_name, contact_phone);
     CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
   `);
+  try { db.exec('ALTER TABLE orders ADD COLUMN adult_count INTEGER'); } catch {}
+  try { db.exec('ALTER TABLE orders ADD COLUMN child_count INTEGER'); } catch {}
+  try { db.exec('ALTER TABLE orders ADD COLUMN user_id TEXT'); } catch {}
+  try { db.exec('ALTER TABLE orders ADD COLUMN bind_time TEXT'); } catch {}
+  try { db.exec('ALTER TABLE orders ADD COLUMN ai_call_status_text TEXT'); } catch {}
+  try { db.exec('ALTER TABLE orders ADD COLUMN ai_call_status_updated_at TEXT'); } catch {}
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      uid TEXT PRIMARY KEY,
+      phone TEXT UNIQUE NOT NULL,
+      password TEXT NOT NULL,
+      nickname TEXT,
+      create_time TEXT DEFAULT (datetime('now')),
+      last_login_time TEXT,
+      status INTEGER DEFAULT 1
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone ON users(phone);
+  `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS login_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL,
+      login_time TEXT DEFAULT (datetime('now')),
+      ip TEXT,
+      device TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_login_log_user ON login_log(user_id);
+  `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS verification_codes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      phone TEXT NOT NULL,
+      code TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_vc_phone ON verification_codes(phone);
+  `);
 }
 
 export function getDb() {
@@ -53,4 +92,14 @@ export function generateOrderNo() {
   const s = String(t.getSeconds()).padStart(2, '0');
   const r = Math.random().toString(36).slice(2, 8).toUpperCase();
   return `RB${y}${m}${d}${h}${min}${s}${r}`;
+}
+
+/** 生成唯一用户 UID（10 位字母数字） */
+export function generateUid() {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let uid = 'u';
+  for (let i = 0; i < 9; i++) uid += chars[Math.floor(Math.random() * chars.length)];
+  const db = getDb();
+  const exists = db.prepare('SELECT 1 FROM users WHERE uid = ?').get(uid);
+  return exists ? generateUid() : uid;
 }

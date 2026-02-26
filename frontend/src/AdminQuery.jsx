@@ -1,85 +1,200 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+
+const STATUS_MAP = {
+  pending_pay: '待支付',
+  pending: '预约中',
+  calling: '预约中',
+  completed: '预约成功',
+  failed: '预约失败',
+  cancelled: '已取消',
+};
+
+function statusLabel(s) {
+  return STATUS_MAP[s] || s || '-';
+}
 
 export function AdminQuery({ apiBase }) {
-  const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [userId, setUserId] = useState('');
+  const [users, setUsers] = useState([]);
+  const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [orders, setOrders] = useState(null);
   const [err, setErr] = useState('');
+  const [detailOrder, setDetailOrder] = useState(null);
+  const [cancelling, setCancelling] = useState(null);
 
-  const search = async (e) => {
-    e.preventDefault();
-    if (!name.trim() && !phone.trim()) {
-      setErr('请填写姓名或手机号');
-      return;
-    }
+  useEffect(() => {
+    fetch(`${apiBase}/admin/users`)
+      .then((r) => r.json())
+      .then((d) => d.ok && setUsers(d.users || []))
+      .catch(() => {});
+  }, [apiBase]);
+
+  const fetchOrders = async () => {
     setErr('');
     setLoading(true);
-    setOrders(null);
     try {
       const params = new URLSearchParams();
-      if (name.trim()) params.set('contact_name', name.trim());
-      if (phone.trim()) params.set('contact_phone', phone.trim());
-      const res = await fetch(`${apiBase}/orders/by-user?${params}`);
+      if (statusFilter !== 'all') params.set('status', statusFilter);
+      if (userId) params.set('user_id', userId);
+      const res = await fetch(`${apiBase}/orders?${params}`);
       const data = await res.json();
-      if (!data.ok) throw new Error(data.message || '查询失败');
+      if (!data.ok) throw new Error(data.message || '加载失败');
       setOrders(data.orders || []);
     } catch (e) {
-      setErr(e.message || '查询失败');
+      setErr(e.message || '加载失败');
+      setOrders([]);
     } finally {
       setLoading(false);
     }
   };
 
+  useEffect(() => {
+    fetchOrders();
+  }, [statusFilter, userId, apiBase]);
+
+  const handleCancel = async (orderNo) => {
+    if (!confirm('确定取消该预约订单？')) return;
+    setCancelling(orderNo);
+    try {
+      const res = await fetch(`${apiBase}/orders/${orderNo}/cancel`, { method: 'POST' });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.message || '取消失败');
+      setDetailOrder(null);
+      fetchOrders();
+    } catch (e) {
+      alert(e.message || '取消失败');
+    } finally {
+      setCancelling(null);
+    }
+  };
+
+  const canCancel = (o) => o.status !== 'completed' && o.status !== 'cancelled';
+
+  function formatPeople(o) {
+    if (o.adult_count != null || o.child_count != null) return `成人 ${o.adult_count ?? o.party_size ?? 0} 儿童 ${o.child_count ?? 0}`;
+    return `${o.party_size ?? 0} 人`;
+  }
+
   return (
     <div className="admin-query">
-      <div className="card">
-        <h2>按用户查询</h2>
-        <form onSubmit={search}>
-          <div className="form-row">
-            <label>联系人姓名</label>
-            <input
-              type="text"
-              placeholder="选填"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </div>
-          <div className="form-row">
-            <label>联系人手机号</label>
-            <input
-              type="tel"
-              placeholder="选填"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-            />
-          </div>
-          {err && <p className="form-error">{err}</p>}
-          <button type="submit" className="btn-primary" disabled={loading}>
-            {loading ? '查询中…' : '查询'}
-          </button>
-        </form>
+      <div className="admin-toolbar">
+        <label className="filter-label">预约状态</label>
+        <select
+          className="filter-select"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+        >
+          <option value="all">全部</option>
+          <option value="pending_pay">待支付</option>
+          <option value="booking">预约中</option>
+          <option value="completed">预约成功</option>
+          <option value="failed">预约失败</option>
+          <option value="cancelled">已取消</option>
+        </select>
+        <label className="filter-label">按用户</label>
+        <select
+          className="filter-select"
+          value={userId}
+          onChange={(e) => setUserId(e.target.value)}
+        >
+          <option value="">全部用户</option>
+          {users.map((u) => (
+            <option key={u.uid} value={u.uid}>{u.phone || u.uid} {u.nickname ? `(${u.nickname})` : ''}</option>
+          ))}
+        </select>
+        <button type="button" className="btn-refresh" onClick={fetchOrders} disabled={loading}>
+          {loading ? '加载中…' : '刷新'}
+        </button>
       </div>
-      {orders && (
-        <div className="card">
-          <h2>订单列表（{orders.length} 条）</h2>
-          {orders.length === 0 ? (
-            <p className="text-muted">暂无记录</p>
-          ) : (
-            <ul className="order-list">
-              {orders.map((o) => (
-                <li key={o.id} className="order-item">
-                  <p><strong>{o.order_no}</strong> {o.status}</p>
-                  <p>餐厅：{o.restaurant_name || '-'} {o.restaurant_phone}</p>
-                  <p>{o.booking_date} {o.booking_time}，{o.party_size}人 | {o.contact_name} {o.contact_phone}</p>
-                  {o.summary_text && <p className="summary">摘要：{o.summary_text}</p>}
-                  {o.recording_url && (
-                    <a href={o.recording_url} target="_blank" rel="noopener noreferrer">听录音</a>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
+      {err && <p className="form-error">{err}</p>}
+      <div className="admin-table-wrap">
+        <table className="admin-table">
+          <thead>
+            <tr>
+              <th>订单号</th>
+              <th>餐厅</th>
+              <th>预约人</th>
+              <th>预约时间</th>
+              <th>人数</th>
+              <th>状态</th>
+              <th>用户</th>
+              <th>创建时间</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {!loading && orders.length === 0 ? (
+              <tr>
+                <td colSpan="9" className="empty-td">暂无订单</td>
+              </tr>
+            ) : (
+              orders.map((o) => (
+                <tr key={o.id}>
+                  <td className="td-order-no">{o.order_no}</td>
+                  <td className="td-restaurant">
+                    <span className="name">{o.restaurant_name || '-'}</span>
+                    <span className="sub">{o.restaurant_phone}</span>
+                  </td>
+                  <td className="td-contact">
+                    <span className="name">{o.contact_name}</span>
+                    <span className="sub">{o.contact_phone}</span>
+                  </td>
+                  <td>{o.booking_date} {o.booking_time}</td>
+                  <td>{formatPeople(o)}</td>
+                  <td>{statusLabel(o.status)}</td>
+                  <td>{o.user_id ? o.user_id : '-'}</td>
+                  <td>{o.created_at}</td>
+                  <td className="td-actions">
+                    <button type="button" className="btn-link" onClick={() => setDetailOrder(o)}>详情</button>
+                    {canCancel(o) && (
+                      <button type="button" className="btn-link danger" onClick={() => handleCancel(o.order_no)} disabled={cancelling === o.order_no}>
+                        {cancelling === o.order_no ? '取消中…' : '取消'}
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {detailOrder && (
+        <div className="modal-overlay" onClick={() => setDetailOrder(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>预约详情</h3>
+              <button type="button" className="modal-close" onClick={() => setDetailOrder(null)}>×</button>
+            </div>
+            <div className="modal-body">
+              <dl className="detail-dl">
+                <dt>订单号</dt>
+                <dd>{detailOrder.order_no}</dd>
+                <dt>餐厅名称</dt>
+                <dd>{detailOrder.restaurant_name || '-'}</dd>
+                <dt>餐厅电话</dt>
+                <dd>{detailOrder.restaurant_phone}</dd>
+                <dt>预约人（姓名和电话）</dt>
+                <dd>{detailOrder.contact_name} / {detailOrder.contact_phone}</dd>
+                <dt>预约时间</dt>
+                <dd>{detailOrder.booking_date} {detailOrder.booking_time}</dd>
+                <dt>人数（成人数量儿童数量）</dt>
+                <dd>{formatPeople(detailOrder)}</dd>
+                <dt>状态</dt>
+                <dd>{statusLabel(detailOrder.status)}</dd>
+                <dt>AI 通话结果</dt>
+                <dd>{detailOrder.summary_text || '-'}</dd>
+                <dt>短信通知</dt>
+                <dd>{detailOrder.sms_sent ? '已发送' : '未发送'}</dd>
+                <dt>创建时间</dt>
+                <dd>{detailOrder.created_at}</dd>
+              </dl>
+              {detailOrder.recording_url && (
+                <p><a href={detailOrder.recording_url} target="_blank" rel="noopener noreferrer">听录音</a></p>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

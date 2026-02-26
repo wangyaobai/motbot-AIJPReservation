@@ -1,6 +1,8 @@
 import { useState } from 'react';
+import { useAuth } from './context/AuthContext';
 
 export function BookingForm({ onSubmit, apiBase }) {
+  const { safeResJson } = useAuth();
   const [loading, setLoading] = useState(false);
   const [restaurantName, setRestaurantName] = useState('');
   const [restaurantPhone, setRestaurantPhone] = useState('');
@@ -31,7 +33,7 @@ export function BookingForm({ onSubmit, apiBase }) {
     setSearchUrl('');
     try {
       const res = await fetch(`${apiBase}/search/restaurant?q=${encodeURIComponent(q)}`);
-      const data = await res.json();
+      const data = await safeResJson(res);
       setSearchResults(data.places || []);
       if (data.searchUrl) setSearchUrl(data.searchUrl);
       if (data.message) setSearchError(data.message);

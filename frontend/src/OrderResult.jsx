@@ -1,16 +1,34 @@
 import { useState } from 'react';
+import { useAuth } from './context/AuthContext';
 
-export function OrderResult({ order, apiBase, onReset }) {
+export function OrderResult({ order, apiBase, onReset, backLabel }) {
+  const { safeResJson } = useAuth();
   const [calling, setCalling] = useState(false);
+  const [paying, setPaying] = useState(false);
   const [err, setErr] = useState('');
   const [currentOrder, setCurrentOrder] = useState(order);
+
+  const confirmPayment = async () => {
+    setErr('');
+    setPaying(true);
+    try {
+      const res = await fetch(`${apiBase}/orders/${order.order_no}/confirm-payment`, { method: 'POST' });
+      const data = await safeResJson(res);
+      if (!data.ok) throw new Error(data.message || '操作失败');
+      setCurrentOrder(data.order);
+    } catch (e) {
+      setErr(e.message || '操作失败');
+    } finally {
+      setPaying(false);
+    }
+  };
 
   const startCall = async () => {
     setErr('');
     setCalling(true);
     try {
       const res = await fetch(`${apiBase}/orders/${order.order_no}/call`, { method: 'POST' });
-      const data = await res.json();
+      const data = await safeResJson(res);
       if (!data.ok) throw new Error(data.message || '发起通话失败');
       setCurrentOrder(data.order);
     } catch (e) {
@@ -21,9 +39,12 @@ export function OrderResult({ order, apiBase, onReset }) {
   };
 
   const statusText = {
+    pending_pay: '待支付',
     pending: '待拨打电话',
     calling: '正在拨打餐厅电话…',
     completed: '已完成（已发短信摘要）',
+    failed: '预约失败',
+    cancelled: '已取消',
   };
 
   return (
@@ -43,10 +64,19 @@ export function OrderResult({ order, apiBase, onReset }) {
         <p>
           <a href={currentOrder.recording_url} target="_blank" rel="noopener noreferrer">收听通话录音</a>
         </p>
-        )}
+      )}
+      {currentOrder.status === 'pending_pay' && (
+        <>
+          <p className="hint">请完成支付后，即可由 AI 代您拨打餐厅电话。</p>
+          {err && <p className="form-error">{err}</p>}
+          <button type="button" className="btn-primary" onClick={confirmPayment} disabled={paying}>
+            {paying ? '处理中…' : '支付'}
+          </button>
+        </>
+      )}
       {currentOrder.status === 'pending' && (
         <>
-          <p className="hint">提交后请点击下方按钮，由 AI 自动拨打餐厅电话（日语沟通），并录音。完成后将短信发送摘要至您的手机。</p>
+          <p className="hint">点击下方按钮，由 AI 自动拨打餐厅电话（日语沟通），并录音。完成后将短信发送摘要至您的手机。</p>
           {err && <p className="form-error">{err}</p>}
           <button type="button" className="btn-primary" onClick={startCall} disabled={calling}>
             {calling ? '正在发起通话…' : '立即代打电话'}
@@ -54,7 +84,7 @@ export function OrderResult({ order, apiBase, onReset }) {
         </>
       )}
       <button type="button" className="btn-primary secondary" onClick={onReset}>
-        再预约一单
+        {backLabel || '再预约一单'}
       </button>
     </div>
   );
