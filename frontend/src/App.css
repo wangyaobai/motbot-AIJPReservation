@@ -123,6 +123,31 @@
   flex-shrink: 0;
 }
 
+/* 内页标题栏下方：与标题栏同宽的白色底条 */
+.page-header-white {
+  width: 100%;
+  min-height: 12px;
+  background: #fff;
+}
+
+/* 内页白底：与标题栏同宽，在标题栏下方、高度铺满到页面最下端 */
+.app-page-with-white {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+.app-page-with-white .page-white-body {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  background: #fff;
+}
+
+/* 订单卡片 / 凭证卡片：轻微阴影 */
+.card-shadow {
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+}
+
 .header {
   width: 100%;
   border-radius: 0 0 16px 16px;
@@ -215,7 +240,8 @@ a.link-btn:hover {
   margin-bottom: 6px;
 }
 .form-row input,
-.form-row select {
+.form-row select,
+.form-row textarea {
   width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--border);
@@ -228,11 +254,78 @@ a.link-btn:hover {
   opacity: 0.8;
 }
 .form-row input:focus,
-.form-row select:focus {
+.form-row select:focus,
+.form-row textarea:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 2px var(--accent-soft);
 }
+.form-row textarea {
+  resize: vertical;
+  min-height: 60px;
+}
+
+.booking-time-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 24px;
+  margin-bottom: 14px;
+}
+.booking-slot {
+  flex: 1;
+  min-width: 200px;
+}
+.booking-slot label {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.slot-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.slot-fields input[type="date"] {
+  min-width: 120px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.slot-fields select {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  min-width: 64px;
+}
+.party-row input[type="number"] {
+  width: 80px;
+  padding: 10px 12px;
+}
+.label-required {
+  color: var(--accent, #e85d04);
+  margin-left: 2px;
+}
+.party-row-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 24px;
+  align-items: flex-end;
+}
+.party-row-inline .party-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.party-row-inline .party-field label {
+  margin-bottom: 0;
+}
+.party-row-inline .party-field input {
+  width: 80px;
+  padding: 10px 12px;
+}
+
 .restaurant-name-row {
   display: flex;
   gap: 10px;

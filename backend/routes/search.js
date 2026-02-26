@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { fetchRestaurantAddress } from '../services/restaurantAddress.js';
 
 const router = Router();
 
@@ -173,6 +174,16 @@ async function searchRestaurant(query) {
     for (const s of snippets.slice(0, 5)) {
       const p = extractJapanesePhone(`${s.title} ${s.snippet}`);
       if (p) places.push({ name: s.title || query, phone: p, address: (s.snippet || '').slice(0, 80), url: s.link || searchUrl });
+    }
+  }
+
+  // 用 DeepSeek 为每条结果补全店铺地址，便于展示并随订单存储
+  for (const p of places.slice(0, 5)) {
+    try {
+      const addr = await fetchRestaurantAddress(p.name, p.phone);
+      if (addr) p.address = addr;
+    } catch (e) {
+      console.error('[search] fetchRestaurantAddress', p.name, e.message);
     }
   }
 

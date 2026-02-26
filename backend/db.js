@@ -43,6 +43,17 @@ export function ensureSchema() {
   try { db.exec('ALTER TABLE orders ADD COLUMN bind_time TEXT'); } catch {}
   try { db.exec('ALTER TABLE orders ADD COLUMN ai_call_status_text TEXT'); } catch {}
   try { db.exec('ALTER TABLE orders ADD COLUMN ai_call_status_updated_at TEXT'); } catch {}
+  try { db.exec('ALTER TABLE orders ADD COLUMN ai_call_attempt_count INTEGER'); } catch {}
+  try { db.exec('ALTER TABLE orders ADD COLUMN ai_last_attempt_at TEXT'); } catch {}
+  try { db.exec('ALTER TABLE orders ADD COLUMN ai_call_est_at TEXT'); } catch {}
+  try { db.exec('ALTER TABLE orders ADD COLUMN ai_call_status_type TEXT'); } catch {}
+  try { db.exec('ALTER TABLE orders ADD COLUMN ai_call_status_log TEXT'); } catch {}
+  try { db.exec('ALTER TABLE orders ADD COLUMN second_booking_date TEXT'); } catch {}
+  try { db.exec('ALTER TABLE orders ADD COLUMN second_booking_time TEXT'); } catch {}
+  try { db.exec('ALTER TABLE orders ADD COLUMN dietary_notes TEXT'); } catch {}
+  try { db.exec('ALTER TABLE orders ADD COLUMN booking_remark TEXT'); } catch {}
+  try { db.exec('ALTER TABLE orders ADD COLUMN restaurant_address TEXT'); } catch {}
+  try { db.exec('ALTER TABLE orders ADD COLUMN sms_body TEXT'); } catch {}
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (

@@ -1,4 +1,6 @@
 import { getDb } from '../db.js';
+import { appendAiCallLog } from '../services/aiCallLog.js';
+import { fetchRestaurantAddress, fetchRestaurantNameAndAddressByPhone } from '../services/restaurantAddress.js';
 import OpenAI from 'openai';
 import twilio from 'twilio';
 
@@ -29,6 +31,7 @@ export default async function recordingHandler(body) {
   const recordingUrl = base.replace(/\.(mp3|wav)?$/i, '') + '.mp3';
   const duration = parseInt(RecordingDuration, 10) || 0;
 
+  appendAiCallLog(order.id, '接通，通话完成');
   db.prepare(
     'UPDATE orders SET recording_url = ?, recording_duration_sec = ?, updated_at = datetime(\'now\') WHERE id = ?'
   ).run(recordingUrl, duration, order.id);
@@ -46,10 +49,49 @@ export default async function recordingHandler(body) {
     }
   }
 
-  db.prepare('UPDATE orders SET summary_text = ?, status = \'completed\', updated_at = datetime(\'now\') WHERE id = ?').run(
+  // 2.4：若店家反馈已约满，本次订单完成但预约失败（status=failed），并写入 log 供展示
+  const isFullBooked = /已约满|约满|满席|いっぱい|満席/.test(summaryText || '');
+  const finalStatus = isFullBooked ? 'failed' : 'completed';
+  if (isFullBooked) {
+    appendAiCallLog(order.id, 'AI拨打已接通，店家反馈已约满，本次订单已结束。您可以再次尝试发起新的预约时间或预约其他餐厅。');
+  } else {
+    const d = order.booking_date || '';
+    const t = order.booking_time || '';
+    const n = order.party_size ?? 0;
+    const m = d.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    const dateStr = m ? `${parseInt(m[2], 10)}月${parseInt(m[3], 10)}日` : '—';
+    const [hh, min] = (t || '').split(':');
+    const timeStr = hh != null ? `${parseInt(hh, 10)}时${min ? `${parseInt(min, 10)}分` : ''}` : '—';
+    const successMsg = `您的预订已经成功，已经成功预定了${dateStr}${timeStr}${n}人的座位。预约通话过程可查看「AI沟通记录」，就餐可出示「预约凭证」。`;
+    appendAiCallLog(order.id, successMsg);
+  }
+
+  db.prepare('UPDATE orders SET summary_text = ?, status = ?, updated_at = datetime(\'now\') WHERE id = ?').run(
     summaryText,
+    finalStatus,
     order.id
   );
+
+  // 预约成功后补全店铺信息，供预约凭证展示：
+  // - 用户未使用搜索、只填了电话：用 DeepSeek 根据电话反查店铺名称+地址并存储
+  // - 有名称无地址：仅反查地址
+  if (finalStatus === 'completed' && order.restaurant_phone) {
+    try {
+      if (!order.restaurant_name) {
+        const { name, address } = await fetchRestaurantNameAndAddressByPhone(order.restaurant_phone);
+        if (name || address) {
+          db.prepare(
+            'UPDATE orders SET restaurant_name = COALESCE(?, restaurant_name), restaurant_address = COALESCE(?, restaurant_address) WHERE id = ?'
+          ).run(name || null, address || null, order.id);
+        }
+      } else if (!order.restaurant_address) {
+        const addr = await fetchRestaurantAddress(order.restaurant_name, order.restaurant_phone);
+        if (addr) db.prepare('UPDATE orders SET restaurant_address = ? WHERE id = ?').run(addr, order.id);
+      }
+    } catch (e) {
+      console.error('[recording] fetchRestaurantNameAndAddressByPhone / fetchRestaurantAddress', e.message);
+    }
+  }
 
   const twilioClient = getTwilioClient();
   if (twilioClient && order.contact_phone) {
@@ -58,12 +100,13 @@ export default async function recordingHandler(body) {
       const to = order.contact_phone_region === 'jp'
         ? (order.contact_phone.startsWith('+') ? order.contact_phone : `+81${digits}`)
         : `+86${digits.replace(/^0/, '')}`;
+      const smsBody = `【日本餐厅预约】您的预约通话已完成。摘要：${summaryText}`;
       await twilioClient.messages.create({
-        body: `【日本餐厅预约】您的预约通话已完成。摘要：${summaryText}`,
+        body: smsBody,
         from: process.env.TWILIO_PHONE_NUMBER,
         to,
       });
-      db.prepare('UPDATE orders SET sms_sent = 1 WHERE id = ?').run(order.id);
+      db.prepare('UPDATE orders SET sms_sent = 1, sms_body = ? WHERE id = ?').run(smsBody, order.id);
     } catch (e) {
       console.error('SMS send error', e);
     }
@@ -95,7 +138,8 @@ async function transcribeRecording(recordingUrl) {
 }
 
 async function generateSummary(transcript, order) {
-  const prompt = `以下是一段日语餐厅预约电话的转写文本。请用中文写一段简短摘要（2-4句话），说明：是否预约成功、预约日期时间与人数、餐厅是否有其他说明。\n\n转写：\n${transcript}`;
+  const prompt = `以下是一段日语餐厅预约电话的转写文本。请用中文写一段简短摘要（2-4句话），说明：是否预约成功、预约日期时间与人数、餐厅是否有其他说明。
+若店家表示该时段已约满、满席或无法预约，请在摘要中明确写出「店家反馈已约满」或「已约满」，以便系统标记为预约失败。\n\n转写：\n${transcript}`;
   const completion = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
     messages: [{ role: 'user', content: prompt }],

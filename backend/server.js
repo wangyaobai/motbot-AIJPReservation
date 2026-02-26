@@ -9,12 +9,14 @@ import searchRouter from './routes/search.js';
 import twilioRouter from './routes/twilio.js';
 import { ensureSchema } from './db.js';
 import { optionalAuth } from './middleware/auth.js';
+import { startRetryCallScheduler } from './scheduler/retryCall.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 ensureSchema();
+startRetryCallScheduler();
 
 const app = express();
 app.use(cors());

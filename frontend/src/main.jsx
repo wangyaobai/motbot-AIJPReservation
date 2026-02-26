@@ -11,6 +11,8 @@ import { ForgotPassword } from './pages/ForgotPassword';
 import { Profile } from './pages/Profile';
 import { OrderList } from './pages/OrderList';
 import { OrderDetail } from './pages/OrderDetail';
+import { OrderAiRecord } from './pages/OrderAiRecord';
+import { OrderVoucher } from './pages/OrderVoucher';
 import './index.css';
 
 const API = import.meta.env.VITE_API_BASE || '/api';
@@ -28,6 +30,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/profile" element={<Profile />} />
           <Route path="/orders" element={<OrderList />} />
           <Route path="/orders/:orderNo" element={<OrderDetail />} />
+          <Route path="/orders/:orderNo/ai-record" element={<OrderAiRecord />} />
+          <Route path="/orders/:orderNo/voucher" element={<OrderVoucher />} />
           <Route path="/admin" element={<AdminPage />} />
         </Routes>
       </AuthProvider>

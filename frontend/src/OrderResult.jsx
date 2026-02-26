@@ -39,12 +39,12 @@ export function OrderResult({ order, apiBase, onReset, backLabel }) {
   };
 
   const statusText = {
-    pending_pay: '待支付',
-    pending: '待拨打电话',
-    calling: '正在拨打餐厅电话…',
-    completed: '已完成（已发短信摘要）',
+    pending_pay: '未支付',
+    pending: '预约中',
+    calling: '预约中',
+    completed: '预约完成',
     failed: '预约失败',
-    cancelled: '已取消',
+    cancelled: '取消',
   };
 
   return (
@@ -54,7 +54,15 @@ export function OrderResult({ order, apiBase, onReset, backLabel }) {
       <p className="status">状态：{statusText[currentOrder.status] || currentOrder.status}</p>
       <ul className="order-summary">
         <li>餐厅：{currentOrder.restaurant_name || '-'} / {currentOrder.restaurant_phone}</li>
-        <li>时间：{currentOrder.booking_date} {currentOrder.booking_time}，{currentOrder.party_size} 人</li>
+        <li>
+          第一希望：{currentOrder.booking_date} {currentOrder.booking_time}
+          {(currentOrder.second_booking_date && currentOrder.second_booking_time) && (
+            <> · 第二希望：{currentOrder.second_booking_date} {currentOrder.second_booking_time}</>
+          )}
+        </li>
+        <li>人数：成人 {currentOrder.adult_count ?? currentOrder.party_size ?? 0}，儿童 {currentOrder.child_count ?? 0}</li>
+        {(currentOrder.dietary_notes) && <li>饮食注意：{currentOrder.dietary_notes}</li>}
+        {(currentOrder.booking_remark) && <li>预约备注：{currentOrder.booking_remark}</li>}
         <li>联系人：{currentOrder.contact_name} {currentOrder.contact_phone}</li>
         {currentOrder.summary_text && (
           <li className="summary">AI 沟通摘要：{currentOrder.summary_text}</li>

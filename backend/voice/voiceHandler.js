@@ -23,26 +23,60 @@ export default function voiceHandler(req, res) {
     'こんにちは。お客様の代わりにご予約のお電話をさせていただいております。'
   );
 
-  // 日期时间与人数（将 YYYY-MM-DD 转为日语口语：X月X日）
-  const dateStr = formatDateForJapanese(order.booking_date);
-  const timeStr = order.booking_time;
-  const party = order.party_size;
+  // 第一希望：日期时间（YYYY-MM-DD → X月X日）
+  const dateStr1 = formatDateForJapanese(order.booking_date);
+  const timeStr1 = order.booking_time || '';
   twiml.say(
     { language: 'ja-JP', voice: 'Polly.Mizuki' },
-    `${dateStr}の${timeStr}、${party}名様でご予約をお願いいたします。`
+    `第一希望は、${dateStr1}の${timeStr1}でございます。`
   );
 
-  if (order.flexible_hour) {
+  // 第二希望（如有）
+  if (order.second_booking_date && order.second_booking_time) {
+    const dateStr2 = formatDateForJapanese(order.second_booking_date);
+    const timeStr2 = order.second_booking_time;
     twiml.say(
       { language: 'ja-JP', voice: 'Polly.Mizuki' },
-      'その時間が難しい場合は、前後1時間のご調整も可能です。'
+      `第二希望は、${dateStr2}の${timeStr2}でございます。`
     );
   }
 
-  if (order.want_set_meal) {
+  // 人数：成人・儿童
+  const adults = order.adult_count != null ? Number(order.adult_count) : (order.party_size || 0);
+  const children = order.child_count != null ? Number(order.child_count) : 0;
+  if (children > 0) {
     twiml.say(
       { language: 'ja-JP', voice: 'Polly.Mizuki' },
-      '人気のコースのご用意もお願いできますでしょうか。'
+      `大人${adults}名様、お子様${children}名様でご予約をお願いいたします。`
+    );
+  } else {
+    twiml.say(
+      { language: 'ja-JP', voice: 'Polly.Mizuki' },
+      `${adults}名様でご予約をお願いいたします。`
+    );
+  }
+
+  // 饮食注意（如有）：用日语说明有饮食相关要求，再读原文（可能含中文）
+  if (order.dietary_notes && String(order.dietary_notes).trim()) {
+    twiml.say(
+      { language: 'ja-JP', voice: 'Polly.Mizuki' },
+      '食事に関するご要望がございます。'
+    );
+    twiml.say(
+      { language: 'ja-JP', voice: 'Polly.Mizuki' },
+      String(order.dietary_notes).trim()
+    );
+  }
+
+  // 预约备注（如有）：用日语说明另有备注，再读原文
+  if (order.booking_remark && String(order.booking_remark).trim()) {
+    twiml.say(
+      { language: 'ja-JP', voice: 'Polly.Mizuki' },
+      'その他、お客様からのご要望は以下のとおりです。'
+    );
+    twiml.say(
+      { language: 'ja-JP', voice: 'Polly.Mizuki' },
+      String(order.booking_remark).trim()
     );
   }
 

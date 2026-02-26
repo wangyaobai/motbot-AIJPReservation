@@ -2,22 +2,23 @@ import { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { PageTitleBar } from '../components/TitleBar';
+import { formatLocalDateTime } from '../utils/date';
 
 const TABS = [
   { value: 'all', label: '全部' },
-  { value: 'pending_pay', label: '待付款' },
+  { value: 'pending_pay', label: '未支付' },
   { value: 'booking', label: '预约中' },
-  { value: 'completed', label: '预约成功' },
+  { value: 'completed', label: '预约完成' },
   { value: 'cancel_fail', label: '取消/失败' },
 ];
 
 const statusText = {
-  pending_pay: '待付款',
+  pending_pay: '未支付',
   pending: '预约中',
   calling: '预约中',
-  completed: '预约成功',
+  completed: '预约完成',
   failed: '预约失败',
-  cancelled: '已取消',
+  cancelled: '取消',
 };
 
 export function OrderList() {
@@ -93,9 +94,11 @@ export function OrderList() {
   if (!isLoggedIn) return null; // 已在上方 redirect 到登录，此处仅防御性返回
 
   return (
-    <div className="app" style={{ paddingBottom: 24 }}>
+    <div className="app app-page-with-white" style={{ paddingBottom: 24 }}>
       <PageTitleBar title="我的订单" backTo="/book" />
-      <div style={{ padding: '0 16px' }}>
+      <div className="page-white-body">
+        <div className="page-header-white" />
+        <div style={{ padding: '0 16px' }}>
         <div className="tabs-wrap">
           <div className="tabs">
             {TABS.map((t) => (
@@ -119,15 +122,19 @@ export function OrderList() {
           ) : (
             <ul className="order-list" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
               {list.map((o) => (
-                <li key={o.id} className="card" style={{ padding: 14, marginBottom: 12 }}>
+                <li key={o.id} className="card card-shadow" style={{ padding: 14, marginBottom: 12 }}>
                   <span className="order-card-title">{o.restaurant_name || '未填餐厅名'}</span>
                   <p className="order-card-row">
                     <span className="order-card-label">下单时间</span>
-                    <span className="order-card-value">{o.created_at || '-'}</span>
+                    <span className="order-card-value">{formatLocalDateTime(o.created_at)}</span>
                   </p>
                   <p className="order-card-row">
                     <span className="order-card-label">预定信息</span>
-                    <span className="order-card-value">{o.booking_date} {o.booking_time} · {o.party_size} 人</span>
+                    <span className="order-card-value">
+                      {o.booking_date} {o.booking_time}
+                      {(o.second_booking_date && o.second_booking_time) && ` / ${o.second_booking_date} ${o.second_booking_time}`}
+                      {' · 成人 '}{(o.adult_count ?? o.party_size ?? 0)}{' 儿童 '}{(o.child_count ?? 0)}
+                    </span>
                   </p>
                   <p className="order-card-row" style={{ marginBottom: 12 }}>
                     <span className="order-card-label">状态</span>
@@ -169,6 +176,7 @@ export function OrderList() {
             {loadingMore ? '加载中…' : '加载更多'}
           </button>
         )}
+      </div>
       </div>
     </div>
   );
