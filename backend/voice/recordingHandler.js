@@ -1,11 +1,8 @@
 import { getDb } from '../db.js';
 import { appendAiCallLog } from '../services/aiCallLog.js';
 import { fetchRestaurantAddress, fetchRestaurantNameAndAddressByPhone } from '../services/restaurantAddress.js';
-import { transcribeJaFromUrl } from '../services/aliyunAsr.js';
-import OpenAI from 'openai';
+import { transcribeFromUrl } from '../services/aliyunAsr.js';
 import twilio from 'twilio';
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || '' });
 
 function getTwilioClient() {
   const sid = process.env.TWILIO_ACCOUNT_SID;
@@ -54,12 +51,8 @@ export default async function recordingHandler(body) {
     const authHeader = process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN
       ? 'Basic ' + Buffer.from(process.env.TWILIO_ACCOUNT_SID + ':' + process.env.TWILIO_AUTH_TOKEN).toString('base64')
       : null;
-    if (process.env.ALI_APP_KEY) {
-      transcriptFull = await transcribeJaFromUrl(recordingUrl, { authHeader }) || '';
-    }
-    if (!transcriptFull && openai.apiKey) {
-      transcriptFull = await transcribeRecording(recordingUrl) || '';
-    }
+    const lang = (order.call_lang || 'ja').toString().toLowerCase() === 'en' ? 'en' : 'ja';
+    transcriptFull = await transcribeFromUrl(recordingUrl, { authHeader, lang }) || '';
     if (transcriptFull) {
       db.prepare('UPDATE orders SET transcript_full = ?, updated_at = datetime(\'now\') WHERE id = ?').run(transcriptFull, order.id);
     }
@@ -67,27 +60,13 @@ export default async function recordingHandler(body) {
 
   let summaryText = '通话已结束。';
   let transcriptCn = '';
-  const hasLlm = !!(process.env.DEEPSEEK_API_KEY || openai.apiKey);
-  if (hasLlm && transcriptFull) {
+  const hasDeepSeek = !!process.env.DEEPSEEK_API_KEY;
+  if (hasDeepSeek && transcriptFull) {
     try {
       summaryText = await generateSummary(transcriptFull, order);
-      transcriptCn = await translateToChinese(transcriptFull);
+      transcriptCn = await translateToChinese(transcriptFull, order);
       if (transcriptCn) {
         db.prepare('UPDATE orders SET transcript_cn = ?, updated_at = datetime(\'now\') WHERE id = ?').run(transcriptCn, order.id);
-      }
-    } catch (e) {
-      console.error('transcribe/summary error', e);
-      summaryText = `通话录音已保存。转写或摘要生成失败：${e.message}`;
-    }
-  } else if (openai.apiKey && !transcriptFull) {
-    try {
-      const transcript = await transcribeRecording(recordingUrl);
-      if (transcript) {
-        transcriptFull = transcript;
-        db.prepare('UPDATE orders SET transcript_full = ?, updated_at = datetime(\'now\') WHERE id = ?').run(transcriptFull, order.id);
-        summaryText = await generateSummary(transcript, order);
-        transcriptCn = await translateToChinese(transcript);
-        if (transcriptCn) db.prepare('UPDATE orders SET transcript_cn = ?, updated_at = datetime(\'now\') WHERE id = ?').run(transcriptCn, order.id);
       }
     } catch (e) {
       console.error('transcribe/summary error', e);
@@ -163,39 +142,20 @@ export default async function recordingHandler(body) {
   }
 }
 
-async function transcribeRecording(recordingUrl) {
-  if (!openai.apiKey) return null;
-  const resp = await fetch(recordingUrl, {
-    headers: process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN
-      ? { Authorization: 'Basic ' + Buffer.from(process.env.TWILIO_ACCOUNT_SID + ':' + process.env.TWILIO_AUTH_TOKEN).toString('base64') }
-      : {},
-  });
-  if (!resp.ok) return null;
-  const buf = Buffer.from(await resp.arrayBuffer());
-  const FormData = (await import('form-data')).default;
-  const form = new FormData();
-  form.append('file', buf, { filename: 'recording.mp3' });
-  form.append('model', 'whisper-1');
-  form.append('language', 'ja');
-  const transcriptResp = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-    method: 'POST',
-    headers: { ...form.getHeaders(), Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
-    body: form,
-  });
-  if (!transcriptResp.ok) return null;
-  const data = await transcriptResp.json();
-  return data.text || null;
-}
-
 async function generateSummary(transcript, order) {
-  const prompt = `以下是一段日语餐厅预约电话的转写文本。请用中文写一段简短摘要（2-4句话），说明：是否预约成功、预约日期时间与人数、餐厅是否有其他说明。
+  const isEn = (order?.call_lang || '').toString().toLowerCase() === 'en';
+  const prompt = isEn
+    ? `Below is a restaurant reservation call transcript (English). Please write a short summary in Chinese (2-4 sentences) including:
+- whether the reservation was successful
+- date/time and party size
+- any extra notes from the restaurant
+If the restaurant says fully booked / no availability / cannot accept the reservation, explicitly include “店家反馈已约满” or “已约满” in your Chinese summary.\n\nTranscript:\n${transcript}`
+    : `以下是一段日语餐厅预约电话的转写文本。请用中文写一段简短摘要（2-4句话），说明：是否预约成功、预约日期时间与人数、餐厅是否有其他说明。
 若店家表示该时段已约满、满席或无法预约，请在摘要中明确写出「店家反馈已约满」或「已约满」，以便系统标记为预约失败。\n\n转写：\n${transcript}`;
-  const apiKey = process.env.DEEPSEEK_API_KEY || process.env.OPENAI_API_KEY;
-  const useDeepSeek = !!process.env.DEEPSEEK_API_KEY;
-  const url = useDeepSeek ? 'https://api.deepseek.com/chat/completions' : 'https://api.openai.com/v1/chat/completions';
-  const body = useDeepSeek
-    ? { model: 'deepseek-chat', messages: [{ role: 'user', content: prompt }], max_tokens: 300, temperature: 0.3 }
-    : { model: 'gpt-4o-mini', messages: [{ role: 'user', content: prompt }], max_tokens: 300 };
+  const apiKey = process.env.DEEPSEEK_API_KEY;
+  if (!apiKey) return '摘要生成失败。';
+  const url = 'https://api.deepseek.com/chat/completions';
+  const body = { model: 'deepseek-chat', messages: [{ role: 'user', content: prompt }], max_tokens: 300, temperature: 0.3 };
   const resp = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
@@ -206,15 +166,16 @@ async function generateSummary(transcript, order) {
   return text || '摘要生成失败。';
 }
 
-async function translateToChinese(transcript) {
+async function translateToChinese(transcript, order) {
   if (!transcript.trim()) return '';
-  const apiKey = process.env.DEEPSEEK_API_KEY || process.env.OPENAI_API_KEY;
+  const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) return '';
-  const useDeepSeek = !!process.env.DEEPSEEK_API_KEY;
-  const url = useDeepSeek ? 'https://api.deepseek.com/chat/completions' : 'https://api.openai.com/v1/chat/completions';
-  const body = useDeepSeek
-    ? { model: 'deepseek-chat', messages: [{ role: 'user', content: `将以下日语内容翻译成中文，只输出译文：\n\n${transcript}` }], max_tokens: 500, temperature: 0.2 }
-    : { model: 'gpt-4o-mini', messages: [{ role: 'user', content: `将以下日语内容翻译成中文，只输出译文：\n\n${transcript}` }], max_tokens: 500 };
+  const url = 'https://api.deepseek.com/chat/completions';
+  const isEn = (order?.call_lang || '').toString().toLowerCase() === 'en';
+  const content = isEn
+    ? `将以下英文内容翻译成中文，只输出译文：\n\n${transcript}`
+    : `将以下日语内容翻译成中文，只输出译文：\n\n${transcript}`;
+  const body = { model: 'deepseek-chat', messages: [{ role: 'user', content }], max_tokens: 500, temperature: 0.2 };
   const resp = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },

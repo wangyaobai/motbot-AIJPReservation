@@ -7,8 +7,17 @@ const REGION = process.env.ALIYUN_REGION || 'cn-shanghai';
 function trimEnv(val) {
   return (val || '').trim().replace(/^[\"']|[\"']$/g, '');
 }
-// ASR 默认使用日语项目的 AppKey（兼容旧变量）
-const APP_KEY = trimEnv(process.env.ALI_APP_KEY_JA || process.env.ALIYUN_APP_KEY_JA || process.env.ALI_APP_KEY || process.env.ALIYUN_APP_KEY);
+function getAppKeyByLang(lang) {
+  const l = String(lang || '').toLowerCase();
+  if (l === 'en') return trimEnv(process.env.ALI_APP_KEY_EN || process.env.ALIYUN_APP_KEY_EN || '');
+  if (l === 'ja') return trimEnv(process.env.ALI_APP_KEY_JA || process.env.ALIYUN_APP_KEY_JA || '');
+  return '';
+}
+
+// 兼容旧变量（不推荐）：未分语言时使用
+function getLegacyAppKey() {
+  return trimEnv(process.env.ALI_APP_KEY || process.env.ALIYUN_APP_KEY || '');
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const tmpDir = path.join(__dirname, '..', 'data', 'asr_tmp');
@@ -18,8 +27,8 @@ const GATEWAY = REGION === 'cn-shanghai'
   ? 'https://nls-gateway-cn-shanghai.aliyuncs.com'
   : `https://nls-gateway-${REGION}.aliyuncs.com`;
 
-if (!APP_KEY) {
-  console.warn('[aliyunAsr] 未配置阿里云语音 AppKey（ALI_APP_KEY_JA/ALI_APP_KEY），ASR 将退化为返回空字符串。');
+if (!getAppKeyByLang('ja') && !getAppKeyByLang('en') && !getLegacyAppKey()) {
+  console.warn('[aliyunAsr] 未配置阿里云语音 AppKey（ALI_APP_KEY_JA/ALI_APP_KEY_EN/ALI_APP_KEY），ASR 将退化为返回空字符串。');
 }
 
 /**
@@ -39,10 +48,22 @@ async function downloadToBuffer(recordingUrl, authHeader) {
  * 支持格式：PCM、WAV、MP3、AAC 等；采样率 8000/16000。
  */
 export async function transcribeJaFromUrl(recordingUrl, options = {}) {
+  return transcribeFromUrl(recordingUrl, { ...options, lang: 'ja' });
+}
+
+export async function transcribeEnFromUrl(recordingUrl, options = {}) {
+  return transcribeFromUrl(recordingUrl, { ...options, lang: 'en' });
+}
+
+export async function transcribeFromUrl(recordingUrl, options = {}) {
   if (!recordingUrl) return '';
-  if (!APP_KEY) return '';
+  const lang = (options.lang || 'ja').toString().toLowerCase();
+  const appKey = getAppKeyByLang(lang) || getLegacyAppKey();
+  if (!appKey) return '';
 
   const authHeader = options.authHeader || null;
+  const format = (options.format || 'mp3').toLowerCase();
+  const sampleRate = String(options.sample_rate || '16000');
 
   try {
     const buf = await downloadToBuffer(recordingUrl, authHeader);
@@ -53,9 +74,9 @@ export async function transcribeJaFromUrl(recordingUrl, options = {}) {
     }
 
     const params = new URLSearchParams({
-      appkey: APP_KEY,
-      format: 'mp3',
-      sample_rate: '16000',
+      appkey: appKey,
+      format,
+      sample_rate: sampleRate,
       enable_punctuation_prediction: 'true',
       enable_inverse_text_normalization: 'true',
     });
@@ -86,22 +107,32 @@ export async function transcribeJaFromUrl(recordingUrl, options = {}) {
     console.warn('[aliyunAsr] asr failed', data.status, data.message);
     return '';
   } catch (e) {
-    console.error('[aliyunAsr] transcribeJaFromUrl error', e.message);
+    console.error('[aliyunAsr] transcribeFromUrl error', e.message);
     return '';
   }
 }
 
 /** 本地录音：一句话识别（上传 Buffer），返回文本（默认走日语项目） */
 export async function transcribeJaFromBuffer(buf, options = {}) {
+  return transcribeFromBuffer(buf, { ...options, lang: 'ja' });
+}
+
+export async function transcribeEnFromBuffer(buf, options = {}) {
+  return transcribeFromBuffer(buf, { ...options, lang: 'en' });
+}
+
+export async function transcribeFromBuffer(buf, options = {}) {
   if (!buf || buf.length === 0) return '';
-  if (!APP_KEY) return '';
+  const lang = (options.lang || 'ja').toString().toLowerCase();
+  const appKey = getAppKeyByLang(lang) || getLegacyAppKey();
+  if (!appKey) return '';
   const token = await getNlsToken();
   if (!token) return '';
 
   const format = (options.format || 'mp3').toLowerCase();
   const sampleRate = String(options.sample_rate || '16000');
   const params = new URLSearchParams({
-    appkey: APP_KEY,
+    appkey: appKey,
     format,
     sample_rate: sampleRate,
     enable_punctuation_prediction: 'true',
@@ -124,7 +155,7 @@ export async function transcribeJaFromBuffer(buf, options = {}) {
     if (data.status === 20000000 && data.result != null) return String(data.result).trim();
     return '';
   } catch (e) {
-    console.error('[aliyunAsr] transcribeJaFromBuffer error', e.message);
+    console.error('[aliyunAsr] transcribeFromBuffer error', e.message);
     return '';
   }
 }
