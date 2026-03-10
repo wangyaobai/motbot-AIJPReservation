@@ -25,7 +25,7 @@ export function Profile() {
   if (!isLoggedIn || loading) {
     return (
       <div className="app">
-        <PageTitleBar title="个人中心" backTo="/book" />
+        <PageTitleBar title="个人中心" backTo="/book" useHomeIcon />
         <div className="card" style={{ margin: 16 }}>加载中…</div>
       </div>
     );
@@ -36,7 +36,7 @@ export function Profile() {
 
   return (
     <div className="app" style={{ paddingBottom: 24 }}>
-      <PageTitleBar title="个人中心" backTo="/book" />
+      <PageTitleBar title="个人中心" backTo="/book" useHomeIcon />
       <div style={{ padding: '0 16px' }}>
         <div className="card profile-info-card" style={{ padding: 18, marginTop: 12, marginBottom: 12 }}>
           <div className="profile-row">

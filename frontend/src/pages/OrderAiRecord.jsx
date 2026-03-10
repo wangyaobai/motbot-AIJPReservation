@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { PageTitleBar } from '../components/TitleBar';
@@ -10,8 +10,21 @@ function formatDuration(sec) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-/** 模拟对话：双角色日语+中文。后端若有 order.ai_conversation 则优先使用 */
+/** 对话内容：优先使用 2.5 期 call_records（多轮 AI 真实记录），否则 ai_conversation，否则模拟话术 */
 function getDialogue(order) {
+  const callLang = (order.call_lang || 'ja').toLowerCase();
+  if (order.call_records) {
+    try {
+      const arr = typeof order.call_records === 'string' ? JSON.parse(order.call_records) : order.call_records;
+      if (Array.isArray(arr) && arr.length > 0) {
+        return arr.map((item) => ({
+          role: item.role === 'restaurant' ? 'restaurant' : 'ai',
+          ja: item.text_ja || item.ja || '',
+          zh: item.text_cn || item.zh || '',
+        }));
+      }
+    } catch (_) {}
+  }
   if (order.ai_conversation && Array.isArray(order.ai_conversation) && order.ai_conversation.length > 0) {
     return order.ai_conversation;
   }
@@ -22,6 +35,17 @@ function getDialogue(order) {
   const dateJp = m ? `${parseInt(m[2], 10)}月${parseInt(m[3], 10)}日` : '—';
   const [hh, min] = (t || '').split(':');
   const timeJp = hh != null ? `${parseInt(hh, 10)}時${min ? parseInt(min, 10) + '分' : ''}` : '';
+
+  if (callLang === 'en') {
+    return [
+      { role: 'ai', ja: 'Hello, this is an AI calling on behalf of the guest to make a reservation.', zh: '您好，我们是代客预约服务，受客人委托致电预约。' },
+      { role: 'restaurant', ja: 'Hi, thank you for calling.', zh: '好的，感谢来电。' },
+      { role: 'ai', ja: `We would like to book a table for ${n} people on ${d || 'the selected date'} at ${t || 'the selected time'}.`, zh: `我想预约${d || ''} ${t || ''}${n}人。` },
+      { role: 'restaurant', ja: 'All right, your reservation is confirmed.', zh: '好的，已为您登记。' },
+      { role: 'ai', ja: 'Thank you for confirming. Have a nice day.', zh: '感谢确认，再见。' },
+    ];
+  }
+
   return [
     { role: 'ai', ja: 'こんにちは。お客様の代わりにご予約のお電話をさせていただいております。', zh: '您好，我们是代客预约服务，代客人致电预约。' },
     { role: 'restaurant', ja: 'はい、お電話ありがとうございます。', zh: '好的，感谢来电。' },
@@ -38,9 +62,6 @@ export function OrderAiRecord() {
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const audioRef = useRef(null);
 
   useEffect(() => {
     if (!isLoggedIn) {
@@ -62,23 +83,6 @@ export function OrderAiRecord() {
     })();
     return () => { cancelled = true; };
   }, [orderNo, isLoggedIn, apiBase, fetchWithAuth, safeResJson, navigate]);
-
-  const onTimeUpdate = () => {
-    const el = audioRef.current;
-    if (el) setCurrentTime(el.currentTime);
-  };
-  const onLoadedMetadata = () => {
-    const el = audioRef.current;
-    if (el) setDuration(el.duration);
-  };
-  const onSeek = (e) => {
-    const el = audioRef.current;
-    if (!el) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const p = (e.clientX - rect.left) / rect.width;
-    el.currentTime = p * el.duration;
-    setCurrentTime(el.currentTime);
-  };
 
   if (!isLoggedIn) return null;
   if (loading) {
@@ -105,19 +109,23 @@ export function OrderAiRecord() {
     );
   }
 
+  const callLang = (order.call_lang || 'ja').toLowerCase();
+  const isEnCall = callLang === 'en';
+  // 仅在有录音且预约成功时展示底部播放器
   const hasRecording = !!(order.recording_url && order.status === 'completed');
-  const durSec = order.recording_duration_sec ?? duration;
+  const durSec = order.recording_duration_sec ?? 0;
   const dialogue = getDialogue(order);
 
-  const audioBarHeight = 72;
   return (
-    <div className="app app-page-with-white" style={{ paddingBottom: audioBarHeight + 24 }}>
+    <div className="app app-page-with-white" style={{ paddingBottom: 24 }}>
       <PageTitleBar title="AI沟通记录" backTo={`/orders/${orderNo}`} />
       <div className="page-white-body">
         <div className="page-header-white" />
         <div style={{ padding: '0 16px 16px' }}>
         <p style={{ marginBottom: 16, color: 'var(--text-muted)', fontSize: '0.9em' }}>
-          以下为 AI 与餐厅通话内容转写（日语+中文），供您核对预约内容。
+          {isEnCall
+            ? '以下为 AI 与餐厅通话内容转写（英语+中文），供您核对预约内容。'
+            : '以下为 AI 与餐厅通话内容转写（日语+中文），供您核对预约内容。'}
         </p>
 
         <section style={{ marginBottom: 24 }}>
@@ -134,7 +142,7 @@ export function OrderAiRecord() {
                 }}
               >
                 <div style={{ fontSize: '0.8em', color: 'var(--text-muted)', marginBottom: 6 }}>
-                  {line.role === 'ai' ? 'AI' : '餐厅'}
+                  {line.role === 'ai' ? (isEnCall ? 'AI（英语）' : 'AI（日语）') : '餐厅'}
                 </div>
                 <p style={{ margin: 0, fontSize: '0.95em', lineHeight: 1.5 }}>{line.ja}</p>
                 <p style={{ margin: '4px 0 0', fontSize: '0.9em', color: 'var(--text-muted)' }}>{line.zh}</p>
@@ -150,60 +158,26 @@ export function OrderAiRecord() {
           </section>
         )}
 
+        {order.transcript_cn && (
+          <section style={{ marginBottom: 20 }}>
+            <h3 style={{ fontSize: '1em', marginBottom: 8 }}>完整中文译文</h3>
+            <p style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6, color: 'var(--text-muted)', fontSize: '0.95em' }}>{order.transcript_cn}</p>
+          </section>
+        )}
+
         <section style={{ marginBottom: 0 }}>
           <h3 style={{ fontSize: '1em', marginBottom: 8 }}>通话录音</h3>
-          {hasRecording ? (
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.9em' }}>请在底部播放器收听。</p>
-          ) : (
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.9em' }}>暂无通话录音。</p>
-          )}
+          <audio
+            src={hasRecording ? order.recording_url : ''}
+            controls
+            disabled={!hasRecording}
+            style={{ width: '100%' }}
+          />
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.85em', marginTop: 6 }}>
+            {hasRecording ? `总时长约 ${formatDuration(durSec)}，如有疑问可反复收听确认。` : '暂无通话录音。'}
+          </p>
         </section>
         </div>
-
-        {hasRecording && (
-        <div
-          style={{
-            position: 'fixed',
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: '#fff',
-            borderTop: '1px solid var(--border)',
-            padding: '10px 16px',
-            paddingBottom: 'calc(10px + env(safe-area-inset-bottom))',
-            boxShadow: '0 -2px 10px rgba(0,0,0,0.06)',
-          }}
-        >
-          <audio
-            ref={audioRef}
-            src={order.recording_url}
-            controls
-            style={{ width: '100%', height: 32, marginBottom: 6 }}
-            onTimeUpdate={onTimeUpdate}
-            onLoadedMetadata={onLoadedMetadata}
-          />
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8em', color: 'var(--text-muted)' }}>
-            <span>{formatDuration(currentTime)}</span>
-            <span>{formatDuration(duration || durSec)}</span>
-          </div>
-          <div
-            role="progressbar"
-            tabIndex={0}
-            style={{ height: 6, background: 'var(--border)', borderRadius: 3, marginTop: 4, cursor: 'pointer' }}
-            onClick={onSeek}
-            onKeyDown={(e) => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') e.preventDefault(); }}
-          >
-            <div
-              style={{
-                height: '100%',
-                width: `${duration ? (currentTime / duration) * 100 : 0}%`,
-                background: 'var(--accent)',
-                borderRadius: 3,
-              }}
-            />
-          </div>
-        </div>
-        )}
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
 import { getDb } from '../db.js';
-import { startTwilioCallForOrder } from '../services/twilioCall.js';
+import { startCallForOrder } from '../services/callProvider.js';
 import { appendAiCallLog } from '../services/aiCallLog.js';
 
 const INTERVAL_MS = 2 * 60 * 1000; // 每 2 分钟检查一次
@@ -28,7 +28,7 @@ export function startRetryCallScheduler() {
         const attemptCount = getAttemptCountForToday(order);
         if (attemptCount >= 3) continue;
         try {
-          await startTwilioCallForOrder(order);
+          await startCallForOrder(order);
           const logText = attemptCount === 0 ? '开始发起拨打' : `第${attemptCount + 1}次尝试，开始发起拨打`;
           appendAiCallLog(order.id, logText);
         } catch (e) {

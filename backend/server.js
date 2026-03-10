@@ -16,12 +16,20 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 ensureSchema();
-startRetryCallScheduler();
+if (process.env.DISABLE_RETRY_SCHEDULER !== '1') {
+  startRetryCallScheduler();
+} else {
+  console.warn('[server] retryCall scheduler disabled by DISABLE_RETRY_SCHEDULER=1');
+}
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+// 静态提供 TTS 音频文件，供 Twilio <Play> 访问
+app.use('/tts', express.static(path.join(__dirname, 'public', 'tts')));
+// 试听接口返回同源 URL 时由前端 /api 代理请求到此，避免跨域/ngrok 导致播放失败
+app.use('/api/tts', express.static(path.join(__dirname, 'public', 'tts')));
 
 // 用户认证与用户端订单（需登录）
 app.use('/api/user', userRouter);

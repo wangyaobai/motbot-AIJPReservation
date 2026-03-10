@@ -6,13 +6,14 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js",
+    "dev": "node server.js",
     "init-db": "node scripts/init-db.js"
   },
   "dependencies": {
     "@alicloud/dysmsapi-2017-05-25": "^1.0.1",
     "@alicloud/dysmsapi20170525": "^4.5.0",
     "@alicloud/openapi-client": "^0.4.15",
+    "@alicloud/pop-core": "^1.8.0",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^11.6.0",
     "cors": "^2.8.5",
@@ -20,6 +21,7 @@
     "express": "^4.21.1",
     "form-data": "^4.0.0",
     "jsonwebtoken": "^9.0.3",
+    "multer": "^2.1.1",
     "openai": "^4.73.0",
     "tencentcloud-sdk-nodejs": "^4.1.186",
     "twilio": "^5.3.4"

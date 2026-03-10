@@ -30,17 +30,21 @@ export function TitleBar() {
   );
 }
 
-/** 内页用：左侧返回，中间标题。backTo 为数字时 history 后退，为字符串时跳转该路径 */
-export function PageTitleBar({ title, backTo }) {
+/** 内页用：左侧返回或首页，中间标题。backTo 为数字时 history 后退，为字符串时跳转该路径；useHomeIcon 为 true 时左侧显示首页图标并跳转首页 */
+export function PageTitleBar({ title, backTo, useHomeIcon }) {
   const navigate = useNavigate();
-  const handleBack = () => {
+  const handleLeft = () => {
+    if (useHomeIcon) {
+      navigate('/');
+      return;
+    }
     if (typeof backTo === 'string') navigate(backTo);
     else navigate(-1);
   };
   return (
     <header className="title-bar title-bar-with-back">
-      <button type="button" className="title-bar-back" onClick={handleBack} aria-label="返回">
-        <BackIcon />
+      <button type="button" className="title-bar-back" onClick={handleLeft} aria-label={useHomeIcon ? '首页' : '返回'}>
+        {useHomeIcon ? <HomeIcon /> : <BackIcon />}
       </button>
       <h1 className="title-bar-heading">{title}</h1>
       <span className="title-bar-placeholder" aria-hidden="true" />
@@ -52,6 +56,15 @@ function BackIcon() {
   return (
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M19 12H5M12 19l-7-7 7-7" />
+    </svg>
+  );
+}
+
+function HomeIcon() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+      <polyline points="9 22 9 12 15 12 15 22" />
     </svg>
   );
 }

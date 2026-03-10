@@ -4,6 +4,7 @@ import { getDb } from '../db.js';
 import { appendAiCallLog } from '../services/aiCallLog.js';
 import voiceHandler from '../voice/voiceHandler.js';
 import voiceDoneHandler from '../voice/voiceDoneHandler.js';
+import voiceRecordHandler from '../voice/voiceRecordHandler.js';
 import recordingHandler from '../voice/recordingHandler.js';
 
 const router = Router();
@@ -15,6 +16,8 @@ router.get('/voice/:orderNo', voiceHandler);
 router.post('/voice/:orderNo', voiceHandler);
 router.get('/voice/:orderNo/done', voiceDoneHandler);
 router.post('/voice/:orderNo/done', voiceDoneHandler);
+// 2.5 期多轮：Record 结束后回调，ASR → LLM → TTS → 返回下一轮 Play+Record 或挂断
+router.post('/voice/:orderNo/record', voiceRecordHandler);
 
 // 通话结束后的状态回调：未接通时更新当日尝试次数，并设置「再次尝试」或「当日已 3 次」
 const FAILED_STATUSES = ['busy', 'failed', 'no-answer', 'canceled'];

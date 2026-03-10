@@ -84,9 +84,11 @@ export function OrderVoucher() {
   }
 
   const party = order.party_size ?? 0;
+  const callLang = (order.call_lang || 'ja').toLowerCase();
   const jpDate = toJpDate(order.booking_date);
   const jpTime = toJpTime(order.booking_time);
   const jpSentence = `こんにちは、${jpDate}の${jpTime || ''}に${party}名で予約しています。`;
+  const enSentence = `Hello, I have a reservation for ${party} people on ${order.booking_date || ''} at ${order.booking_time || ''}.`;
   const cnSentence = `您好，我预订了${order.booking_date || ''} ${order.booking_time || ''}的${party}人位。`;
   const jpRestaurant = order.restaurant_name || '—';
   const cnRestaurant = order.restaurant_name_zh || order.restaurant_name || '';
@@ -112,38 +114,42 @@ export function OrderVoucher() {
         <div style={{ padding: '0 16px' }}>
         <div className="card card-shadow voucher-card" style={{ padding: 20, borderRadius: 12, maxWidth: 480, margin: '0 auto' }}>
           {/* (1) 一级标题居中，标题下 10px 分割线 */}
-          <h1 style={h1Style}>予約情報</h1>
+          <h1 style={h1Style}>{callLang === 'en' ? 'Reservation' : '予約情報'}</h1>
           <div style={divider10} />
 
-          {/* (2) 预约信息：日文二级标题+喇叭，日文句下方中文灰色小字，7px 分割线 */}
+          {/* (2) 预约信息：主通话语言句+喇叭，下方中文灰色小字，7px 分割线 */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
-            <h2 style={{ ...h2Style, flex: 1 }}>予約情報</h2>
+            <h2 style={{ ...h2Style, flex: 1 }}>{callLang === 'en' ? 'Reservation details' : '予約情報'}</h2>
             <button
               type="button"
-              onClick={() => speakJapanese(jpSentence)}
+              onClick={() => { if (callLang === 'ja') speakJapanese(jpSentence); }}
               style={{ flexShrink: 0, width: 32, height: 32, padding: 0, border: 'none', background: 'transparent', cursor: 'pointer', fontSize: '1.1em' }}
-              aria-label="日语朗读"
+              aria-label={callLang === 'en' ? 'play in English (disabled)' : '日语朗读'}
             >
               🔈
             </button>
           </div>
-          <p style={{ fontSize: '0.95em', color: '#2d2d2d', margin: '0 0 4px' }}>{jpSentence}</p>
+          <p style={{ fontSize: '0.95em', color: '#2d2d2d', margin: '0 0 4px' }}>
+            {callLang === 'en' ? enSentence : jpSentence}
+          </p>
           <p style={{ ...labelGray, marginTop: 0 }}>{cnSentence}</p>
           <div style={divider7} />
 
-          {/* (3) 餐厅名称：日文一级标题，下方中文灰色小字 */}
+          {/* (3) 餐厅名称：主通话语言名称，下方中文灰色小字 */}
           <h1 style={{ ...h1Style, textAlign: 'left', marginBottom: 4 }}>{jpRestaurant}</h1>
           <p style={{ ...labelGray, marginBottom: 12 }}>{cnRestaurant}</p>
 
-          {/* (4) 住所：同一行标题+地址，右侧导航；下方中文地址，7px 分割线 */}
+          {/* (4) 地址：同一行标题+地址，右侧导航；下方中文地址，7px 分割线 */}
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
-            <h2 style={{ ...h2Style, flex: 1 }}>住所 {jpAddress}</h2>
+            <h2 style={{ ...h2Style, flex: 1 }}>
+              {callLang === 'en' ? 'Address' : '住所'} {jpAddress}
+            </h2>
             <button
               type="button"
               onClick={openMap}
               style={{ flexShrink: 0, padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', fontSize: '0.85em' }}
             >
-              导航
+              {callLang === 'en' ? 'Navigate' : '导航'}
             </button>
           </div>
           <p style={{ ...labelGray, marginTop: 0 }}>{cnAddress}</p>
@@ -152,18 +158,24 @@ export function OrderVoucher() {
           {/* (5) 预约人信息 与 人数 同一行灰色小字，具体信息下一行黑色加粗 */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px 24px', marginBottom: 12 }}>
             <div>
-              <p style={labelGray}>予約名（预约人信息）</p>
+              <p style={labelGray}>
+                {callLang === 'en' ? 'Guest name（预约人信息）' : '予約名（预约人信息）'}
+              </p>
               <p style={valueBold}>{order.contact_name || '—'}</p>
             </div>
             <div>
-              <p style={labelGray}>人数（人数）</p>
+              <p style={labelGray}>
+                {callLang === 'en' ? 'Number of guests（人数）' : '人数（人数）'}
+              </p>
               <p style={valueBold}>{party}人</p>
             </div>
           </div>
 
           {/* (6) 预约电话：标签灰色小字，电话号码下一行黑色加粗 */}
           <div>
-            <p style={labelGray}>予約電話番号（预约电话）</p>
+            <p style={labelGray}>
+              {callLang === 'en' ? 'Contact phone（预约电话）' : '予約電話番号（预约电话）'}
+            </p>
             <p style={valueBold}>{order.contact_phone || '—'}</p>
           </div>
         </div>

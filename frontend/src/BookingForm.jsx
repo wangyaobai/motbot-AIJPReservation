@@ -25,6 +25,7 @@ export function BookingForm({ onSubmit, apiBase }) {
   const [contactName, setContactName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
   const [contactRegion, setContactRegion] = useState('cn');
+  const [callLang, setCallLang] = useState('ja'); // 通话语言：ja 日语 / en 英语
   const [error, setError] = useState('');
 
   const HOURS = Array.from({ length: 24 }, (_, i) => i);
@@ -42,7 +43,7 @@ export function BookingForm({ onSubmit, apiBase }) {
     setSearchResults([]);
     setSearchUrl('');
     try {
-      const res = await fetch(`${apiBase}/search/restaurant?q=${encodeURIComponent(q)}`);
+      const res = await fetch(`${apiBase}/search/restaurant?q=${encodeURIComponent(q)}&lang=${encodeURIComponent(callLang)}`);
       const data = await safeResJson(res);
       setSearchResults(data.places || []);
       if (data.searchUrl) setSearchUrl(data.searchUrl);
@@ -102,6 +103,7 @@ export function BookingForm({ onSubmit, apiBase }) {
         contact_name: contactName.trim(),
         contact_phone: contactPhone.trim().replace(/\s/g, ''),
         contact_phone_region: contactRegion,
+        call_lang: callLang,
       });
     } catch (err) {
       setError(err.message || '提交失败');
@@ -113,6 +115,16 @@ export function BookingForm({ onSubmit, apiBase }) {
   const today = new Date().toISOString().slice(0, 10);
   const Required = () => <span className="label-required">*</span>;
 
+  const restaurantNamePlaceholder =
+    callLang === 'en'
+      ? '输入美国/欧洲餐厅店名（建议使用英文名称）'
+      : '输入日本餐厅店名';
+
+  const restaurantPhonePlaceholder =
+    callLang === 'en'
+      ? '例：+1-212-123-4567 / +44-20-1234-5678；也可通过上方店名搜索点选结果自动填充'
+      : '例：03-1234-5678；也可通过上方店名搜索点选结果自动填充';
+
   return (
     <form onSubmit={handleSubmit} className="booking-form">
       <div className="card">
@@ -122,7 +134,7 @@ export function BookingForm({ onSubmit, apiBase }) {
           <div className="restaurant-name-row">
             <input
               type="text"
-              placeholder="输入日本餐厅店名"
+              placeholder={restaurantNamePlaceholder}
               value={restaurantName}
               onChange={(e) => { setRestaurantName(e.target.value); setSearchError(''); setRestaurantAddress(''); }}
               onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), doSearch())}
@@ -163,10 +175,23 @@ export function BookingForm({ onSubmit, apiBase }) {
           <label>餐厅电话 <Required /></label>
           <input
             type="tel"
-            placeholder="例：03-1234-5678；也可通过上方店名搜索点选结果自动填充"
+            placeholder={restaurantPhonePlaceholder}
             value={restaurantPhone}
             onChange={(e) => { setRestaurantPhone(e.target.value); setRestaurantAddress(''); }}
           />
+        </div>
+        <div className="form-row">
+          <label>通话语言 / 国家地区 <Required /></label>
+          <select
+            value={callLang}
+            onChange={(e) => setCallLang(e.target.value)}
+          >
+            <option value="ja">日本餐厅 · 日语沟通（默认）</option>
+            <option value="en">欧美餐厅 · 英语沟通</option>
+          </select>
+          <p style={{ marginTop: 4, fontSize: '0.8em', color: 'var(--text-muted)' }}>
+            请选择本次预约的餐厅所在地区，系统会按此选择日语或英语与餐厅通话，并在后续预约凭证中使用对应的语言/时区说明。
+          </p>
         </div>
       </div>
 

@@ -49,6 +49,9 @@ export function OrderDetail() {
   const canCancel = order && order.status !== 'completed' && order.status !== 'cancelled';
   const showAiCallStatus = order && order.status !== 'pending_pay';
 
+  const callLang = (order?.call_lang || 'ja').toLowerCase();
+  const isEnCall = callLang === 'en';
+
   const handleCancel = async () => {
     if (!order || !confirm('确定取消该预约？')) return;
     setCancelling(true);
@@ -176,10 +179,12 @@ export function OrderDetail() {
                         }
                         return parts.length === 1 && typeof parts[0] === 'string' ? parts[0] : parts;
                       };
+                      const formatEst = isEnCall ? formatLocalEstimate : formatEstimateJst;
+                      const tzLabel = isEnCall ? '当地时间' : '日本时间';
                       const currentStatusLine = order.ai_call_est_at
                         ? (order.ai_call_status_type === 'retry'
-                          ? `AI已开始拨打，未接通，预计${formatEstimateJst(order.ai_call_est_at)}（日本时间）开始再次尝试，请您耐心等待。`
-                          : `${order.ai_call_status_type === 'not_open' ? '餐厅尚未营业' : '系统排队中'}，预计${formatEstimateJst(order.ai_call_est_at)}（日本时间）开始拨打，请您耐心等待。`)
+                          ? `AI已开始拨打，未接通，预计${formatEst(order.ai_call_est_at)}（${tzLabel}）开始再次尝试，请您耐心等待。`
+                          : `${order.ai_call_status_type === 'not_open' ? '餐厅尚未营业' : '系统排队中'}，预计${formatEst(order.ai_call_est_at)}（${tzLabel}）开始拨打，请您耐心等待。`)
                         : null;
                       return (
                         <>
@@ -200,11 +205,11 @@ export function OrderDetail() {
                     return (
                       <>
                         {order.ai_call_status_type === 'retry' && order.ai_call_est_at
-                          ? `AI已开始拨打，未接通，预计${formatEstimateJst(order.ai_call_est_at)}（日本时间）开始再次尝试，请您耐心等待。`
+                          ? `AI已开始拨打，未接通，预计${(isEnCall ? formatLocalEstimate : formatEstimateJst)(order.ai_call_est_at)}（${isEnCall ? '当地时间' : '日本时间'}）开始再次尝试，请您耐心等待。`
                           : order.ai_call_status_type === 'retry_max'
                           ? (order.ai_call_status_text || '当日已尝试3次未接通，请明日再试或更换时间。')
                           : order.ai_call_est_at
-                          ? `${order.ai_call_status_type === 'not_open' ? '餐厅尚未营业' : '系统排队中'}，预计${formatEstimateJst(order.ai_call_est_at)}（日本时间）开始拨打，请您耐心等待。`
+                          ? `${order.ai_call_status_type === 'not_open' ? '餐厅尚未营业' : '系统排队中'}，预计${(isEnCall ? formatLocalEstimate : formatEstimateJst)(order.ai_call_est_at)}（${isEnCall ? '当地时间' : '日本时间'}）开始拨打，请您耐心等待。`
                           : (order.ai_call_status_text || '暂无')}
                         {order.ai_call_status_updated_at && (
                           <span style={{ display: 'block', fontSize: 0.85, color: 'var(--text-muted)', marginTop: 4 }}>

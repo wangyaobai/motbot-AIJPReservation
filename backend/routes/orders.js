@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { getDb, generateOrderNo } from '../db.js';
 import { enrichAiCallStatusAsync } from './order.js';
-import { startTwilioCallForOrder } from '../services/twilioCall.js';
+import { startCallForOrder } from '../services/callProvider.js';
 import { appendAiCallLog } from '../services/aiCallLog.js';
 import { fetchRestaurantAddress, fetchRestaurantNameAndAddressByPhone } from '../services/restaurantAddress.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -31,6 +31,7 @@ router.post('/', async (req, res) => {
       contact_name,
       contact_phone,
       contact_phone_region = 'cn',
+      call_lang = 'ja',
     } = req.body;
 
     const phone = (restaurant_phone && String(restaurant_phone).trim());
@@ -64,9 +65,9 @@ router.post('/', async (req, res) => {
         booking_date, booking_time, second_booking_date, second_booking_time,
         party_size, adult_count, child_count,
         dietary_notes, booking_remark,
-        contact_name, contact_phone, contact_phone_region,
+        contact_name, contact_phone, contact_phone_region, call_lang,
         status, user_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending_pay', ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     stmt.run(
       orderNo,
@@ -85,6 +86,8 @@ router.post('/', async (req, res) => {
       name,
       contactTel,
       contact_phone_region === 'jp' ? 'jp' : 'cn',
+      (call_lang && String(call_lang).toLowerCase() === 'en') ? 'en' : 'ja',
+      'pending_pay',
       userId,
     );
 
@@ -234,7 +237,7 @@ router.post('/:orderNo/call', async (req, res) => {
       return res.status(400).json({ ok: false, message: '当日已尝试3次未接通，请明日再试或更换时间。' });
     }
 
-    await startTwilioCallForOrder(order);
+    await startCallForOrder(order);
     const logText = attemptCount === 0 ? '开始发起拨打' : `第${attemptCount + 1}次尝试，开始发起拨打`;
     appendAiCallLog(order.id, logText);
 
@@ -242,6 +245,21 @@ router.post('/:orderNo/call', async (req, res) => {
     res.json({ ok: true, order: updated, call_sid: updated.twilio_call_sid });
   } catch (e) {
     console.error(e);
+    const status = Number(e?.status || 0);
+    const code = e?.code ? String(e.code) : '';
+    const moreInfo = e?.moreInfo ? String(e.moreInfo) : '';
+    if (status === 403) {
+      return res.status(403).json({
+        ok: false,
+        message: `电话服务返回 403（权限/账号限制）。请检查 Twilio 账号权限、号码 Voice 能力、以及是否为试用账号仅允许拨打已验证号码。${code ? `code=${code} ` : ''}${moreInfo ? `moreInfo=${moreInfo}` : ''}`.trim(),
+      });
+    }
+    if (status === 401) {
+      return res.status(401).json({
+        ok: false,
+        message: `电话服务鉴权失败（401）。请检查 TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN 是否正确。${code ? `code=${code}` : ''}`.trim(),
+      });
+    }
     res.status(500).json({ ok: false, message: e.message || '发起通话失败' });
   }
 });

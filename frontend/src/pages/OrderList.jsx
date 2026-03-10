@@ -95,7 +95,7 @@ export function OrderList() {
 
   return (
     <div className="app app-page-with-white" style={{ paddingBottom: 24 }}>
-      <PageTitleBar title="我的订单" backTo="/book" />
+      <PageTitleBar title="我的订单" backTo="/book" useHomeIcon />
       <div className="page-white-body">
         <div className="page-header-white" />
         <div style={{ padding: '0 16px' }}>

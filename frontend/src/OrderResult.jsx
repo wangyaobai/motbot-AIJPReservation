@@ -38,6 +38,7 @@ export function OrderResult({ order, apiBase, onReset, backLabel }) {
     }
   };
 
+
   const statusText = {
     pending_pay: '未支付',
     pending: '预约中',
@@ -46,6 +47,8 @@ export function OrderResult({ order, apiBase, onReset, backLabel }) {
     failed: '预约失败',
     cancelled: '取消',
   };
+
+  const callLangText = (currentOrder.call_lang || 'ja').toLowerCase() === 'en' ? '英语沟通' : '日语沟通';
 
   return (
     <div className="card">
@@ -84,7 +87,7 @@ export function OrderResult({ order, apiBase, onReset, backLabel }) {
       )}
       {currentOrder.status === 'pending' && (
         <>
-          <p className="hint">点击下方按钮，由 AI 自动拨打餐厅电话（日语沟通），并录音。完成后将短信发送摘要至您的手机。</p>
+          <p className="hint">点击下方按钮，由 AI 自动拨打餐厅电话（{callLangText}），并录音。完成后将短信发送摘要至您的手机。</p>
           {err && <p className="form-error">{err}</p>}
           <button type="button" className="btn-primary" onClick={startCall} disabled={calling}>
             {calling ? '正在发起通话…' : '立即代打电话'}

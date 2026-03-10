@@ -37,7 +37,8 @@ export async function fetchRestaurantNameAndAddressByPhone(restaurantPhone) {
   }
 
   const digitsOnly = phone.replace(/\D/g, '');
-  const prompt = `你是一个日本商户信息查询助手。请根据「仅且唯一」的以下电话号码，返回「官方登记为该号码」的那一家店铺的名称与地址。
+  const isLikelyJapan = /^\+?81/.test(phone.replace(/\s/g, '')) || (digitsOnly.length >= 9 && digitsOnly.length <= 11 && /^0/.test(digitsOnly));
+  const prompt = isLikelyJapan ? `你是一个日本商户信息查询助手。请根据「仅且唯一」的以下电话号码，返回「官方登记为该号码」的那一家店铺的名称与地址。
 
 重要：必须返回「该电话号码实际所属」的店铺，不要返回其他店铺。例如号码 06-6353-9995 对应的是「寿司处 まえ田」，不要误答成「大阪王将」等其它店铺。若你的知识库中该号码对应的是小众店、寿司店等，就返回该店；不要用知名连锁店替代。
 
@@ -47,7 +48,20 @@ export async function fetchRestaurantNameAndAddressByPhone(restaurantPhone) {
 严格只输出两行纯文本，不要任何前缀、标号或说明：
 第1行：店铺名称（仅日文店名）
 第2行：详细地址（日本格式：〒邮编、都道府県、市区町村等）
-若无法确定该号码对应哪家店，两行都写「—」。`;
+若无法确定该号码对应哪家店，两行都写「—」。`
+  : `你是一个餐厅信息查询助手。请根据「仅且唯一」的以下电话号码，返回「官方登记为该号码」的那一家餐厅/门店的名称与详细地址。
+
+重要：
+- 只返回这个电话号码“实际所属”的实体（门店/办公室/集团等），不要猜测其他店。
+- 如果该号码看起来是集团办公室/总部电话，也照实返回其名称与地址，不要硬凑门店。
+
+电话号码：${phone}
+数字部分：${digitsOnly}
+
+严格只输出两行纯文本，不要任何前缀、标号或说明：
+第1行：名称（可英文/当地语言）
+第2行：详细地址（街道门牌 + 城市 + 州/省 + 邮编 + 国家/地区，尽量完整）
+若无法确定，两行都写「—」。`;
 
   try {
     const resp = await fetch('https://api.deepseek.com/chat/completions', {
@@ -96,7 +110,7 @@ export async function fetchRestaurantNameAndAddressByPhone(restaurantPhone) {
  * @param {string} restaurantPhone
  * @returns {Promise<string>} 地址字符串，失败或未配置时返回空字符串
  */
-export async function fetchRestaurantAddress(restaurantName, restaurantPhone) {
+export async function fetchRestaurantAddress(restaurantName, restaurantPhone, options = {}) {
   const key = cacheKey(restaurantName, restaurantPhone);
   const cached = cache.get(key);
   if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
@@ -109,9 +123,17 @@ export async function fetchRestaurantAddress(restaurantName, restaurantPhone) {
     return '';
   }
 
+  const lang = (options.lang || '').toString().toLowerCase();
+  const phoneDigits = String(restaurantPhone || '').replace(/\D/g, '');
+  const isLikelyJapan = lang === 'ja' || /^\+?81/.test(String(restaurantPhone || '').replace(/\s/g, '')) || (phoneDigits.length >= 9 && phoneDigits.length <= 11 && /^0/.test(phoneDigits));
+
   const namePart = (restaurantName || '').trim() ? `餐厅名「${String(restaurantName).trim().slice(0, 80)}」` : '';
   const phonePart = (restaurantPhone || '').trim() ? `电话 ${String(restaurantPhone).trim()}` : '';
-  const prompt = `请根据以下日本餐厅信息，给出该餐厅的详细地址（日本格式：〒邮编、都道府県、市区町村、街道门牌等）。
+  const prompt = isLikelyJapan
+    ? `请根据以下餐厅信息，给出该餐厅的详细地址（日本格式：〒邮编、都道府県、市区町村、街道门牌等）。
+${namePart} ${phonePart}
+只返回地址文字，不要其他说明。若无法确定请返回空或「—」。`
+    : `请根据以下餐厅信息，给出该餐厅的详细地址（尽量完整：街道门牌 + 城市 + 州/省 + 邮编 + 国家/地区）。
 ${namePart} ${phonePart}
 只返回地址文字，不要其他说明。若无法确定请返回空或「—」。`;
 

@@ -54,6 +54,11 @@ export function ensureSchema() {
   try { db.exec('ALTER TABLE orders ADD COLUMN booking_remark TEXT'); } catch {}
   try { db.exec('ALTER TABLE orders ADD COLUMN restaurant_address TEXT'); } catch {}
   try { db.exec('ALTER TABLE orders ADD COLUMN sms_body TEXT'); } catch {}
+  try { db.exec('ALTER TABLE orders ADD COLUMN call_lang TEXT'); } catch {}
+  try { db.exec('ALTER TABLE orders ADD COLUMN call_records TEXT'); } catch {}
+  try { db.exec('ALTER TABLE orders ADD COLUMN call_result TEXT'); } catch {}
+  try { db.exec('ALTER TABLE orders ADD COLUMN transcript_full TEXT'); } catch {}
+  try { db.exec('ALTER TABLE orders ADD COLUMN transcript_cn TEXT'); } catch {}
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
