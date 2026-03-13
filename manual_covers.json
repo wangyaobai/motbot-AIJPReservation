@@ -1,0 +1,415 @@
+[
+  {
+    "city_hint": "东京",
+    "restaurant_name": "HARBS 新宿ルミネエスト店",
+    "manual_image_url": "https://tabelog.com/imgview/original?id=r8137648390153",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-12 09:07:14"
+  },
+  {
+    "city_hint": "东京",
+    "restaurant_name": "うなぎ 色川",
+    "manual_image_url": "https://tabelog.com/imgview/original?id=r978594215398",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-12 03:16:39"
+  },
+  {
+    "city_hint": "东京",
+    "restaurant_name": "てんぷら みかわ",
+    "manual_image_url": "https://tabelog.com/imgview/original?id=r81693162516496",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-11 11:01:56"
+  },
+  {
+    "city_hint": "东京",
+    "restaurant_name": "炉ばた とれいら",
+    "manual_image_url": "https://tabelog.com/imgview/original?id=r81693162516496",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-11 10:23:37"
+  },
+  {
+    "city_hint": "东京",
+    "restaurant_name": "資生堂パーラー 銀座本店",
+    "manual_image_url": "https://tabelog.com/imgview/original?id=r29049197970470",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-11 10:25:08"
+  },
+  {
+    "city_hint": "九州",
+    "restaurant_name": "うなぎ 川よし",
+    "manual_image_url": "https://yanagawa-kawayoshi.com/serviceimg/gourmet/300479/recommend-1612323171865-7540.jpg",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-13 03:44:58"
+  },
+  {
+    "city_hint": "九州",
+    "restaurant_name": "四海楼",
+    "manual_image_url": "https://lh3.googleusercontent.com/gps-cs-s/AHVAwerQ4-pUvq28vGeGzVU9FX-44p37sLwGV3gb-72x1SlazVDUOUUL41E76VaKv1rsalskXnAUU-TWc0dVa6tO_SW45ZKAIAD5_FKhev0Z-BnTXgg8wNMXS-TIiEuGg0iioQHPfWc0TLh6uE_Z=s1360-w1360-h1020-rw",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-13 03:44:20"
+  },
+  {
+    "city_hint": "九州",
+    "restaurant_name": "天ぷら 山田屋",
+    "manual_image_url": "https://tabelog.com/imgview/original?id=r85916172833684",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-13 03:43:15"
+  },
+  {
+    "city_hint": "九州",
+    "restaurant_name": "料亭 花月",
+    "manual_image_url": "https://www.ryoutei-kagetsu.co.jp/wp/wp-content/themes/ryoutei-kagetsu/img/cook/lead_img01.png",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-13 03:40:37"
+  },
+  {
+    "city_hint": "九州",
+    "restaurant_name": "焼肉 牛次郎",
+    "manual_image_url": "https://lh3.googleusercontent.com/gps-cs-s/AHVAweqMWIMma6-cVvlXOUOhq7uwGr__T8yjtPVsNDNjBAsdjnoEt2PAJe5UezRYi_HR7TWNGEpNI9Snn1F_Os8F6_aSySaDi_-XAOJyTEvCrbcyNrJfnDj9xdIOis2QSoZV2VFOcJYe=s1360-w1360-h1020-rw",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-13 03:39:15"
+  },
+  {
+    "city_hint": "九州",
+    "restaurant_name": "黒豚料理 あぢもり",
+    "manual_image_url": "https://dynamic-media-cdn.tripadvisor.com/media/photo-o/02/49/da/85/caption.jpg?w=1400&h=800&s=1",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-13 03:41:30"
+  },
+  {
+    "city_hint": "京都",
+    "restaurant_name": "うなぎ屋 廣川",
+    "manual_image_url": "https://unagi-hirokawa.jp/img2/index/vi_main2.jpg",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-13 03:17:26"
+  },
+  {
+    "city_hint": "京都",
+    "restaurant_name": "三嶋亭",
+    "manual_image_url": "https://kyoto-mishimatei.com/wp-content/uploads/2019/11/slide1-1500x700.jpg",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-13 03:12:00"
+  },
+  {
+    "city_hint": "京都",
+    "restaurant_name": "人類みな麺類",
+    "manual_image_url": "https://pics7.baidu.com/feed/728da9773912b31b6f969a1b88e08c6adbb4e117.jpeg@f_auto?token=5f1dfdbb721765c749c791fb5233567c",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-11 08:36:24"
+  },
+  {
+    "city_hint": "京都",
+    "restaurant_name": "廣川",
+    "manual_image_url": "https://tabelog.com/imgview/original?id=r36961275765939",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-11 10:36:02"
+  },
+  {
+    "city_hint": "冲绳",
+    "restaurant_name": "Blue Seal アイスクリームパーラー",
+    "manual_image_url": "https://lh3.googleusercontent.com/gps-cs-s/AHVAweqR750m0RfIm1rUosm8xsmJuFvrBTV4L3yy92vKum-b71jvOTCUE_3jK6tp8A3EI56t4eIBvbnJPr7QX0oIQUmqE5VU5GquWr1TEFmWaXV_7OaoGH6itwI38-FZ3Fk86SCilX4KWhi4mYkb=s1360-w1360-h1020-rw",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-13 03:35:58"
+  },
+  {
+    "city_hint": "冲绳",
+    "restaurant_name": "ジャッキー ステーキハウス",
+    "manual_image_url": "https://lh3.googleusercontent.com/gps-cs-s/AHVAwepSzsV9XHGXrSiE0oBsVSBDKRwy2tuDnrewzD7VklgvAFmDE1NEYDfWtBTEtjmw_qbyToP0rpqOJ9dPl-cVztV3lRv_n5i2Yavlw_F1fJ3tCc2jCSCxNkVeOvpFimmNi-61Spm3JQ=s1360-w1360-h1020-rw",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-13 03:35:06"
+  },
+  {
+    "city_hint": "冲绳",
+    "restaurant_name": "ポークたまごおにぎり 牧志本店",
+    "manual_image_url": "https://lh3.googleusercontent.com/gps-cs-s/AHVAwepUJsSmklaq7qTSl3iVsMkbqBILX8CZuXYGFy1IaghBzcWgxtzcdylrSLEwBvhKgfEIznGGvTxWSgi6GWzwGy7AR0Mb7EG94JsLxQm-rHeq2wDtG5vPFmBYGFkw9qUHDpY5RCdt=s1360-w1360-h1020-rw",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-13 03:31:47"
+  },
+  {
+    "city_hint": "冲绳",
+    "restaurant_name": "暖暮 那霸牧志店",
+    "manual_image_url": "https://lh3.googleusercontent.com/gps-cs-s/AHVAweo8OYnetVPG-17RyyuUhhCsVY5BW8leXlNaqzspXXME9Py3uVrTkJ1WGv7bVvChWCOcrAa93YGxbs0tJ6bXh9EHw_jRoZcFTZTwUNWietTqOOHAMLlb9K0lpQEjhVE07looJ0OGRqTF1wVX=s1360-w1360-h1020-rw",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-13 03:30:49"
+  },
+  {
+    "city_hint": "冲绳",
+    "restaurant_name": "目利きの銀次",
+    "manual_image_url": "https://lh3.googleusercontent.com/p/AF1QipPf_b4m4F-K4Z_zaE3sZsHlmTVD07YM3YkLWBAP=s1360-w1360-h1020-rw",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-13 03:29:46"
+  },
+  {
+    "city_hint": "北海道",
+    "restaurant_name": "Molière",
+    "manual_image_url": "https://tabelog.com/imgview/original?id=r68758142585508",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-11 10:47:27"
+  },
+  {
+    "city_hint": "北海道",
+    "restaurant_name": "Restaurant Molière",
+    "manual_image_url": "https://tabelog.com/imgview/original?id=r68758142585508",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-11 10:55:40"
+  },
+  {
+    "city_hint": "北海道",
+    "restaurant_name": "らーめん しゃかりき 本店",
+    "manual_image_url": "https://tabelog.com/imgview/original?id=r9491837041501",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-12 09:03:08"
+  },
+  {
+    "city_hint": "北海道",
+    "restaurant_name": "らーめん すみれ 札幌本店",
+    "manual_image_url": "https://tabelog.com/imgview/original?id=r43811110164744",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-11 10:48:15"
+  },
+  {
+    "city_hint": "北海道",
+    "restaurant_name": "スープカレー GARAKU",
+    "manual_image_url": "https://tabelog.com/imgview/original?id=r10037122046104",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-11 10:54:01"
+  },
+  {
+    "city_hint": "北海道",
+    "restaurant_name": "モリエール",
+    "manual_image_url": "https://s3-media0.fl.yelpcdn.com/bphoto/NprMfoyKUF5URRYVirGtWQ/o.jpg",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-11 10:25:16"
+  },
+  {
+    "city_hint": "北海道",
+    "restaurant_name": "山本屋 本店",
+    "manual_image_url": "https://www.hakobura.jp/rails/active_storage/representations/proxy/eyJfcmFpbHMiOnsiZGF0YSI6NTIzMywicHVyIjoiYmxvYl9pZCJ9fQ==--57b7bcc4cc921caa0207abfb80ce35346682a526/eyJfcmFpbHMiOnsiZGF0YSI6eyJmb3JtYXQiOiJ3ZWJwIiwicmVzaXplX3RvX2ZpdCI6WzE5MjAsbnVsbF19LCJwdXIiOiJ2YXJpYXRpb24ifX0=--01e69bee60917a16ec10d59da33646749ccabdb9/20191010G01.jpg",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-11 10:57:13"
+  },
+  {
+    "city_hint": "北海道",
+    "restaurant_name": "森彦 本店",
+    "manual_image_url": "https://tabelog.com/imgview/original?id=r3173376180477",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-12 03:35:16"
+  },
+  {
+    "city_hint": "北海道",
+    "restaurant_name": "海鮮居酒屋 魚屋の台所",
+    "manual_image_url": "https://tabelog.com/imgview/original?id=r04518340342819",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-11 10:52:32"
+  },
+  {
+    "city_hint": "北海道",
+    "restaurant_name": "海鮮居酒屋 魚屋の台所 本店",
+    "manual_image_url": "https://tabelog.com/imgview/original?id=r04518340342819",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-11 11:14:31"
+  },
+  {
+    "city_hint": "北海道",
+    "restaurant_name": "海鮮食堂 北のグルメ亭",
+    "manual_image_url": "https://tabelog.com/imgview/original?id=r25366295465980",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-11 10:25:18"
+  },
+  {
+    "city_hint": "北海道",
+    "restaurant_name": "炉ばた とれいら",
+    "manual_image_url": "https://tabelog.com/imgview/original?id=r5889070480825",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-11 10:22:28"
+  },
+  {
+    "city_hint": "北海道",
+    "restaurant_name": "焼肉 びっくり亭 すすきの店",
+    "manual_image_url": "https://tblg.k-img.com/restaurant/images/Rvw/243729/640x640_rect_8ebb65c6a4ac7b5109dc719cdbbbfb17.jpg",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-11 10:51:22"
+  },
+  {
+    "city_hint": "北海道",
+    "restaurant_name": "焼肉 松尾 すすきの店",
+    "manual_image_url": "https://rimage.gnst.jp/rest/img/raxxatwn0000/s_0n6l.jpg?t=1769877714",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-11 10:59:24"
+  },
+  {
+    "city_hint": "名古屋",
+    "restaurant_name": "ウエスト 珈琲店",
+    "manual_image_url": "https://lh3.googleusercontent.com/geougc/AF1QipM7Y9MIWx_IZoYOTUr6SvaJL2vb1lOa6kG68vRf=h305-no",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-13 03:16:06"
+  },
+  {
+    "city_hint": "名古屋",
+    "restaurant_name": "コメダ珈琲店 本店",
+    "manual_image_url": "https://tabelog.com/imgview/original?id=r47188318358284",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-13 03:12:51"
+  },
+  {
+    "city_hint": "名古屋",
+    "restaurant_name": "スパイスカレー バリスタ",
+    "manual_image_url": "https://tabelog.com/imgview/original?id=r38136296898857",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-12 09:08:11"
+  },
+  {
+    "city_hint": "名古屋",
+    "restaurant_name": "リストランテ アッラ ヴィータ",
+    "manual_image_url": "https://tabelog.com/imgview/original?id=r99216348220230",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-13 03:10:28"
+  },
+  {
+    "city_hint": "名古屋",
+    "restaurant_name": "矢場とん 本店",
+    "manual_image_url": "https://tabelog.com/imgview/original?id=r27077220090368",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-13 02:49:32"
+  },
+  {
+    "city_hint": "名古屋",
+    "restaurant_name": "麺屋 一徹",
+    "manual_image_url": "http://om-food.jp/_src/2081/img20200511174719182351.jpg?v=1689656988513",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-12 06:23:44"
+  },
+  {
+    "city_hint": "大阪",
+    "restaurant_name": "お好み焼き 福太郎",
+    "manual_image_url": "https://tabelog.com/imgview/original?id=r81383131925117",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-13 03:13:58"
+  },
+  {
+    "city_hint": "大阪",
+    "restaurant_name": "串かつ だるま",
+    "manual_image_url": "https://cdn.walkerland.com.tw/images/upload/poi/p54896/m42441/da8a490ded8ee67d9a9c4ef8b7098d2dedce6e17.jpg",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-12 03:33:26"
+  },
+  {
+    "city_hint": "大阪",
+    "restaurant_name": "丸福珈琲店",
+    "manual_image_url": "https://dimg04.c-ctrip.com/images/02Y1n12000akkl6vl9923_R_1080_808_Q90.jpg",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-11 08:44:04"
+  },
+  {
+    "city_hint": "大阪",
+    "restaurant_name": "人類みな麺類",
+    "manual_image_url": "https://pics7.baidu.com/feed/728da9773912b31b6f969a1b88e08c6adbb4e117.jpeg@f_auto?token=5f1dfdbb721765c749c791fb5233567c",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-11 08:37:38"
+  },
+  {
+    "city_hint": "大阪",
+    "restaurant_name": "太庵",
+    "manual_image_url": "https://axwwgrkdco.cloudimg.io/v7/__gmpics3__/f14a42b43d8740ce96d8876e60783de5.jpeg?w=1000&h=1000&org_if_sml=1",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-11 08:42:25"
+  },
+  {
+    "city_hint": "大阪",
+    "restaurant_name": "自由軒",
+    "manual_image_url": "https://tabelog.com/imgview/original?id=r41126151181124",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-12 05:05:16"
+  },
+  {
+    "city_hint": "日本其他地区",
+    "restaurant_name": "お好み焼き れっつゃ",
+    "manual_image_url": "https://upload.wikimedia.org/wikipedia/commons/5/59/Okonomiyaki_001.jpg",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-12 05:27:16"
+  },
+  {
+    "city_hint": "日本其他地区",
+    "restaurant_name": "そば屋 しらさ",
+    "manual_image_url": "https://tabelog.com/imgview/original?id=r00262239926135",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-12 05:30:30"
+  },
+  {
+    "city_hint": "日本其他地区",
+    "restaurant_name": "はこね 懐石 佳よし",
+    "manual_image_url": "https://kinnotake-resorts.com/kinnotake-tonosawa/images/cuisine/cuisine_top_head.jpg",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-13 03:46:02"
+  },
+  {
+    "city_hint": "日本其他地区",
+    "restaurant_name": "博多 だるま",
+    "manual_image_url": "https://storage.googleapis.com/studio-design-asset-files/projects/1Va6M8Gdq7/s-718x556_v-fs_webp_3bcc44bc-88d5-42a7-bfa2-ebe079593e4b.webp",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-12 05:24:03"
+  },
+  {
+    "city_hint": "日本其他地区",
+    "restaurant_name": "吉池旅館 料理処",
+    "manual_image_url": "https://tabelog.com/imgview/original?id=r28837274888605",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-13 03:59:42"
+  },
+  {
+    "city_hint": "日本其他地区",
+    "restaurant_name": "焼肉 琉球の牛",
+    "manual_image_url": "https://www.u-shi.net/img/index_top_img3.jpg",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-12 05:24:57"
+  },
+  {
+    "city_hint": "日本其他地区",
+    "restaurant_name": "金沢 懐石 いたる",
+    "manual_image_url": "https://nodoguro-itaru.com/wp-content/uploads/2021/03/how01-1.png",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-13 04:00:53"
+  },
+  {
+    "city_hint": "日本其他地区",
+    "restaurant_name": "魚菜屋 ひで",
+    "manual_image_url": "https://tabelog.com/imgview/original?id=r58212322457487",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-12 05:28:25"
+  },
+  {
+    "city_hint": "日本其他地区",
+    "restaurant_name": "鮨 ひらお",
+    "manual_image_url": "https://tabelog.com/imgview/original?id=r63327322468658",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-12 05:23:16"
+  },
+  {
+    "city_hint": "神户",
+    "restaurant_name": "カ・セット",
+    "manual_image_url": "https://myconciergejapan.com/wp-content/uploads/2023/11/casento_0007_1.jpg",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-13 03:24:37"
+  },
+  {
+    "city_hint": "神户",
+    "restaurant_name": "神戸 ぼっかけ",
+    "manual_image_url": "https://livedoor.blogimg.jp/ilovebeerwine/imgs/f/c/fc35a805.jpg",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-13 03:25:22"
+  },
+  {
+    "city_hint": "神户",
+    "restaurant_name": "神戸牛ステーキ モーリヤ 本店",
+    "manual_image_url": "https://lh3.googleusercontent.com/p/AF1QipNniavBTo6J8n8b-M88wCHQMgqbJQ5X9UQbdhUy=s1360-w1360-h1020-rw",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-13 03:19:09"
+  },
+  {
+    "city_hint": "神户",
+    "restaurant_name": "鮨 しん",
+    "manual_image_url": "https://tblg.k-img.com/resize/660x370c/restaurant/images/Rvw/262235/f97dd7f913ff5bc895926405d6ace009.jpg?token=1556db5&api=v2",
+    "manual_enabled": 1,
+    "updated_at": "2026-03-13 03:23:13"
+  }
+]
