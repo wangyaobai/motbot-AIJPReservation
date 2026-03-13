@@ -4,11 +4,28 @@ import { runRefineRecommendationImages } from '../services/refineRecommendationI
 import { getBestCachedMedia } from '../services/resolveRestaurantMedia.js';
 import { isNeedManualImageOnly, moveOkinawaFromOtherToOkinawa } from '../services/recommendationsStore.js';
 import { clearRecommendationsCache } from './recommendations.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { importManualCoversFromJsonFile } from '../services/manualCovers.js';
 
 const router = Router();
 const db = getDb();
 
 let refineInFlight = false;
+
+function requireAdminToken(req, res) {
+  const token = process.env.ADMIN_TOKEN;
+  if (!token) {
+    res.status(500).json({ ok: false, message: 'ADMIN_TOKEN not configured' });
+    return false;
+  }
+  const got = String(req.headers['x-admin-token'] || '').trim();
+  if (!got || got !== token) {
+    res.status(401).json({ ok: false, message: 'Unauthorized' });
+    return false;
+  }
+  return true;
+}
 
 function maskPhone(phone) {
   if (!phone || phone.length < 7) return phone;
@@ -94,6 +111,19 @@ router.post('/refine-recommendation-images', async (req, res) => {
       refineInFlight = false;
     }
   });
+});
+
+/** 手动触发一次：从仓库根目录 manual_covers.json 导入手动封面（无 Shell 时备用） */
+router.post('/import-manual-covers', (req, res) => {
+  if (!requireAdminToken(req, res)) return;
+  try {
+    const __dirname = path.dirname(fileURLToPath(import.meta.url));
+    const jsonPath = path.join(__dirname, '..', '..', 'manual_covers.json');
+    const { imported, total } = importManualCoversFromJsonFile({ db, jsonPath });
+    res.json({ ok: true, imported, total, jsonPath });
+  } catch (e) {
+    res.status(500).json({ ok: false, message: e?.message || 'Server error' });
+  }
 });
 
 const JP_CITY_KEYS = ['hokkaido', 'tokyo', 'osaka', 'nagoya', 'kyoto', 'kobe', 'okinawa', 'kyushu', 'other'];
