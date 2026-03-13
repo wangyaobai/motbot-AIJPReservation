@@ -92,6 +92,37 @@ export function ensureSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_vc_phone ON verification_codes(phone);
   `);
+
+  // 推荐餐厅“最佳媒体”缓存：一旦命中非兜底图就持久化保存，加速首页加载
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS restaurant_media_best (
+      cache_key TEXT PRIMARY KEY,
+      city_hint TEXT,
+      restaurant_name TEXT,
+      data_json TEXT NOT NULL,
+      manual_image_url TEXT,
+      manual_enabled INTEGER DEFAULT 1,
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_restaurant_media_best_city ON restaurant_media_best(city_hint);
+  `);
+
+  // 兼容旧库：补充手动封面字段
+  try { db.exec('ALTER TABLE restaurant_media_best ADD COLUMN manual_image_url TEXT'); } catch {}
+  try { db.exec('ALTER TABLE restaurant_media_best ADD COLUMN manual_enabled INTEGER DEFAULT 1'); } catch {}
+
+  // 推荐餐厅列表持久缓存（SWR）：用于“秒回上一份列表”，再后台刷新
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS recommendations_best (
+      cache_key TEXT PRIMARY KEY,
+      country TEXT NOT NULL,
+      city_key TEXT NOT NULL,
+      city_zh TEXT,
+      restaurants_json TEXT NOT NULL,
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_recommendations_best_cc ON recommendations_best(country, city_key);
+  `);
 }
 
 export function getDb() {

@@ -111,6 +111,14 @@
   background: var(--accent-soft);
   color: var(--accent);
 }
+.title-bar-back:active {
+  opacity: 0.8;
+}
+.title-bar-back svg {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+}
 .title-bar-heading {
   font-size: 1.1rem;
   font-weight: 600;
@@ -518,6 +526,54 @@ a.link-btn:hover {
   max-width: 1200px;
   margin: 0 auto;
 }
+.admin-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 20px 12px;
+  border-bottom: 1px solid #e8e8e8;
+  background: #fff;
+}
+.admin-tabs button {
+  padding: 8px 16px;
+  border: none;
+  background: none;
+  color: #666;
+  font-size: 0.9rem;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.admin-tabs button:hover { color: #1a1a1a; background: #f5f5f5; }
+.admin-tabs button.active { color: #e85d04; font-weight: 600; background: #fff3e6; }
+
+.admin-media-cover { padding: 0; }
+.admin-media-loading, .admin-media-empty { color: #666; margin: 0 0 16px; }
+.admin-media-summary { margin: 0 0 12px; color: #1a1a1a; font-size: 0.95rem; }
+.admin-media-actions { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+.admin-media-refine-msg { margin: 0 0 16px; color: #e85d04; font-size: 0.9rem; }
+.admin-media-city { margin-bottom: 24px; }
+.admin-media-city h3 { margin: 0 0 12px; font-size: 1rem; color: #1a1a1a; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.admin-media-badge { font-size: 0.8rem; color: #c2410c; background: #fff7ed; padding: 2px 8px; border-radius: 4px; font-weight: 600; }
+.admin-media-count { font-size: 0.85rem; color: #666; font-weight: normal; }
+.admin-media-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.admin-media-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #eee;
+  border-radius: 8px;
+  background: #fafafa;
+  flex-wrap: wrap;
+}
+.admin-media-thumb { flex: 0 0 64px; width: 64px; height: 64px; border-radius: 8px; overflow: hidden; background: #eee; }
+.admin-media-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.admin-media-info { flex: 1; min-width: 180px; }
+.admin-media-info strong { display: block; margin-bottom: 4px; font-size: 0.95rem; }
+.admin-media-address { display: block; font-size: 0.8rem; color: #555; margin-bottom: 4px; }
+.admin-media-feature { font-size: 0.8rem; color: #666; }
+.admin-media-form { display: flex; gap: 8px; align-items: center; flex: 1 1 100%; min-width: 0; }
+.admin-media-input { flex: 1; min-width: 320px; padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 0.9rem; }
+
 .admin-query {
   width: 100%;
 }
@@ -606,6 +662,40 @@ a.link-btn:hover {
   height: 5px;
   background: #e85d04;
   z-index: 1;
+}
+
+/* 首页日本城市标签：椭圆形，可横向滑动 */
+.city-tabs-wrap {
+  margin: 0 -16px 12px;
+  padding: 0 16px 6px;
+  background: transparent;
+}
+.city-tabs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  -webkit-overflow-scrolling: touch;
+}
+.city-tabs::-webkit-scrollbar {
+  height: 3px;
+}
+.city-chip {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.9);
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.city-chip.active {
+  border-color: #e85d04;
+  background: #fff3e6;
+  color: #e85d04;
+  font-weight: 600;
 }
 
 /* 订单卡片：主标题 + 副标题行 */

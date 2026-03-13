@@ -94,6 +94,22 @@
 
 ---
 
+## 推荐列表秒开（预热）
+
+- 后端启动后会自动在后台预热 9 个城市的推荐列表（约 2 分钟内完成），写入 SQLite。之后用户进入任意城市都会**秒开**（先返回上一份缓存，再后台刷新）。
+- 若希望部署后**第一时间**所有城市就秒开，可在部署成功后执行一次预热（需服务已运行）：
+  - 在本地执行：`BASE_URL=https://你的域名 node backend/scripts/warm-recommendations.js`  
+  或进入 backend 目录执行：`BASE_URL=https://你的域名 npm run warm`
+- 若不想自动预热，在 Railway Variables 里加 `SKIP_WARM_RECOMMENDATIONS=1` 即可。
+
+### 预加载数据尽量无兜底图（可选）
+
+1. **预热**：先跑完 `warm`（见上），让每个城市有一份推荐列表写入 `recommendations_best`。
+2. **精修**：在 backend 目录执行 `npm run refine-images`，会对列表中仍是兜底图的餐厅用「特色/菜名」模糊搜图补上，并写回 SQLite。
+3. **仍有兜底时**：打开后台 **封面图管理**（`/admin` → 封面图管理），列表里会只显示仍缺封面的餐厅，可逐个填写图片 URL 并保存，保存后首页该店会显示你填的图。
+
+---
+
 ## 常见问题
 
 - **构建失败**：看 Deployments 里该次部署的 **Build Logs**，常见是 Node 版本或 `npm run build` 报错，按提示改。

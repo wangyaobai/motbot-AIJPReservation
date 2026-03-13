@@ -7,7 +7,9 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "init-db": "node scripts/init-db.js"
+    "init-db": "node scripts/init-db.js",
+    "warm": "node scripts/warm-recommendations.js",
+    "refine-images": "node scripts/refine-recommendation-images.js"
   },
   "dependencies": {
     "@alicloud/dysmsapi-2017-05-25": "^1.0.1",

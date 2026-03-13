@@ -1,27 +1,69 @@
 import { Link, useNavigate } from 'react-router-dom';
+import { useUiLang } from '../context/UiLangContext';
 
 /** 首页/预约页用：标题严格居中，右侧小图标+文字；下方可接背景图 */
-export function TitleBar() {
+export function TitleBar({ showLangToggle }) {
+  const { uiLang, toggleUiLang } = useUiLang();
+  const isEn = uiLang === 'en';
   return (
     <>
       <header className="title-bar title-bar-center">
-        <div className="title-bar-left" aria-hidden="true" />
+        <div className="title-bar-left" aria-hidden="true">
+          {showLangToggle && (
+            <button
+              type="button"
+              onClick={toggleUiLang}
+              style={{
+                padding: '6px 10px',
+                borderRadius: 999,
+                border: '1px solid var(--border)',
+                background: '#fff',
+                fontSize: '0.75rem',
+                cursor: 'pointer',
+              }}
+            >
+              {isEn ? '中文' : 'EN'}
+            </button>
+          )}
+        </div>
         <div className="title-bar-inner">
-          <h1 className="title-bar-title">🥢 日本餐厅 AI 代预约</h1>
+          <h1 className="title-bar-title">
+            {isEn ? '🥢 AI Restaurant Booking' : '🥢 日本餐厅 AI 代预约'}
+          </h1>
           <p className="title-bar-subtitle">
-            不会日语？
-            <br />
-            AI 帮您用日语致电餐厅预约
+            {isEn ? (
+              <>
+                Book restaurants in Japan &amp; overseas
+                <br />
+                AI calls the restaurant for you
+              </>
+            ) : (
+              <>
+                不会日语？
+                <br />
+                AI 帮您用日语致电餐厅预约
+              </>
+            )}
           </p>
         </div>
         <div className="title-bar-actions">
-          <Link to="/orders" className="title-bar-action" title="我的订单" aria-label="我的订单">
+          <Link
+            to="/orders"
+            className="title-bar-action"
+            title={isEn ? 'Orders' : '我的订单'}
+            aria-label={isEn ? 'Orders' : '我的订单'}
+          >
             <OrderIcon />
-            <span>订单</span>
+            <span>{isEn ? 'Orders' : '订单'}</span>
           </Link>
-          <Link to="/profile" className="title-bar-action" title="个人中心" aria-label="个人中心">
+          <Link
+            to="/profile"
+            className="title-bar-action"
+            title={isEn ? 'Profile' : '个人中心'}
+            aria-label={isEn ? 'Profile' : '个人中心'}
+          >
             <ProfileIcon />
-            <span>个人中心</span>
+            <span>{isEn ? 'Profile' : '个人中心'}</span>
           </Link>
         </div>
       </header>
@@ -30,10 +72,16 @@ export function TitleBar() {
   );
 }
 
-/** 内页用：左侧返回或首页，中间标题。backTo 为数字时 history 后退，为字符串时跳转该路径；useHomeIcon 为 true 时左侧显示首页图标并跳转首页 */
-export function PageTitleBar({ title, backTo, useHomeIcon }) {
+/** 内页用：左侧返回或首页，中间标题。onBackClick 优先；否则 backTo 为字符串时跳转该路径，为数字时 history 后退；useHomeIcon 为 true 时左侧显示首页图标并跳转首页；showLangToggle 为 true 时右侧显示 中文/EN 切换 */
+export function PageTitleBar({ title, backTo, useHomeIcon, showLangToggle, onBackClick }) {
   const navigate = useNavigate();
+  const { uiLang, toggleUiLang } = useUiLang();
+  const isEn = uiLang === 'en';
   const handleLeft = () => {
+    if (typeof onBackClick === 'function') {
+      onBackClick();
+      return;
+    }
     if (useHomeIcon) {
       navigate('/');
       return;
@@ -43,11 +91,33 @@ export function PageTitleBar({ title, backTo, useHomeIcon }) {
   };
   return (
     <header className="title-bar title-bar-with-back">
-      <button type="button" className="title-bar-back" onClick={handleLeft} aria-label={useHomeIcon ? '首页' : '返回'}>
-        {useHomeIcon ? <HomeIcon /> : <BackIcon />}
+      <button
+        type="button"
+        className="title-bar-back"
+        onClick={handleLeft}
+        aria-label={useHomeIcon ? (isEn ? 'Home' : '首页') : (isEn ? 'Back' : '返回')}
+      >
+        {(useHomeIcon === true) ? <HomeIcon /> : <BackIcon />}
       </button>
       <h1 className="title-bar-heading">{title}</h1>
-      <span className="title-bar-placeholder" aria-hidden="true" />
+      <span className="title-bar-placeholder" style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+        {showLangToggle && (
+          <button
+            type="button"
+            onClick={toggleUiLang}
+            style={{
+              padding: '4px 8px',
+              borderRadius: 999,
+              border: '1px solid var(--border)',
+              background: '#fff',
+              fontSize: '0.7rem',
+              cursor: 'pointer',
+            }}
+          >
+            {isEn ? '中文' : 'EN'}
+          </button>
+        )}
+      </span>
     </header>
   );
 }

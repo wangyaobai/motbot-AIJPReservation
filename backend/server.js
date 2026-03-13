@@ -6,10 +6,13 @@ import orderRouter from './routes/order.js';
 import userRouter from './routes/user.js';
 import adminRouter from './routes/admin.js';
 import searchRouter from './routes/search.js';
+import recommendationsRouter from './routes/recommendations.js';
 import twilioRouter from './routes/twilio.js';
+import translateRouter from './routes/translate.js';
 import { ensureSchema } from './db.js';
 import { optionalAuth } from './middleware/auth.js';
 import { startRetryCallScheduler } from './scheduler/retryCall.js';
+import { runBuildPreloadAll } from './services/buildPreload.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -39,7 +42,9 @@ app.use('/api/order', orderRouter);
 app.use('/api/orders', optionalAuth, ordersRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/search', searchRouter);
+app.use('/api/recommendations', recommendationsRouter);
 app.use('/api/twilio', twilioRouter);
+app.use('/api/translate', translateRouter);
 app.use('/orders', optionalAuth, ordersRouter);
 app.use('/search', searchRouter);
 app.use('/twilio', twilioRouter);
@@ -59,6 +64,22 @@ if (process.env.NODE_ENV === 'production' && fs.existsSync(frontendDist)) {
 const PORT = parseInt(process.env.PORT, 10) || 3000;
 const MAX_TRY = 10;
 
+function startWarmRecommendations(port) {
+  setImmediate(async () => {
+    console.log('[warm] 开始构建预加载（每城最多 10 家有封面图：历史+精修+DeepSeek）…');
+    try {
+      const results = await runBuildPreloadAll(port);
+      for (const r of results) {
+        if (r?.error) console.log('[warm] %s error:', r.cityKey, r.error);
+        else console.log('[warm] %s ok (%d 家)', r.cityKey, r?.count ?? 0);
+      }
+      console.log('[warm] 预加载构建完成');
+    } catch (e) {
+      console.warn('[warm] 预加载构建失败', e?.message);
+    }
+  });
+}
+
 function tryListen(port, attempt = 0) {
   if (attempt >= MAX_TRY) {
     console.error(`Ports ${PORT}～${PORT + MAX_TRY - 1} 均被占用，请先结束占用进程或设置 PORT=其他端口`);
@@ -68,6 +89,9 @@ function tryListen(port, attempt = 0) {
     console.log(`Server running on port ${port}`);
     if (port !== PORT) {
       console.warn(`前端代理请指向: http://localhost:${port}（修改 frontend/vite.config.js 的 proxy["/api"].target）`);
+    }
+    if (process.env.SKIP_WARM_RECOMMENDATIONS !== '1') {
+      startWarmRecommendations(port);
     }
   });
   server.on('error', (err) => {

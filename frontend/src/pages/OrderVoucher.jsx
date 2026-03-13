@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { PageTitleBar } from '../components/TitleBar';
+import { useUiLang } from '../context/UiLangContext';
 
 function toJpDate(dateStr) {
   if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return '';
@@ -26,6 +27,8 @@ export function OrderVoucher() {
   const { orderNo } = useParams();
   const { isLoggedIn, fetchWithAuth, safeResJson, apiBase } = useAuth();
   const navigate = useNavigate();
+  const { uiLang } = useUiLang();
+  const isEnUi = uiLang === 'en';
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -60,10 +63,10 @@ export function OrderVoucher() {
   if (loading) {
     return (
       <div className="app app-page-with-white">
-        <PageTitleBar title="预约凭证" backTo={`/orders/${orderNo}`} />
+        <PageTitleBar title={isEnUi ? 'Voucher' : '预约凭证'} showLangToggle backTo={`/orders/${orderNo}`} />
         <div className="page-white-body">
           <div className="page-header-white" />
-          <div className="card card-shadow" style={{ margin: 16 }}>加载中…</div>
+          <div className="card card-shadow" style={{ margin: 16 }}>{isEnUi ? 'Loading…' : '加载中…'}</div>
         </div>
       </div>
     );
@@ -71,12 +74,12 @@ export function OrderVoucher() {
   if (error || !order) {
     return (
       <div className="app app-page-with-white">
-        <PageTitleBar title="预约凭证" backTo="/orders" />
+        <PageTitleBar title={isEnUi ? 'Voucher' : '预约凭证'} showLangToggle backTo="/orders" />
         <div className="page-white-body">
           <div className="page-header-white" />
           <div style={{ padding: 16 }}>
-            <p className="form-error">{error || '订单不存在'}</p>
-            <Link to="/orders" className="link-btn">返回订单列表</Link>
+            <p className="form-error">{error || (isEnUi ? 'Order not found' : '订单不存在')}</p>
+            <Link to="/orders" className="link-btn">{isEnUi ? 'Back to orders' : '返回订单列表'}</Link>
           </div>
         </div>
       </div>
@@ -108,7 +111,7 @@ export function OrderVoucher() {
 
   return (
     <div className="app app-page-with-white" style={{ paddingBottom: 24, minHeight: '100vh' }}>
-      <PageTitleBar title="预约凭证" backTo={`/orders/${orderNo}`} />
+      <PageTitleBar title={isEnUi ? 'Voucher' : '预约凭证'} showLangToggle backTo={`/orders/${orderNo}`} />
       <div className="page-white-body">
         <div className="page-header-white" />
         <div style={{ padding: '0 16px' }}>
@@ -124,7 +127,7 @@ export function OrderVoucher() {
               type="button"
               onClick={() => { if (callLang === 'ja') speakJapanese(jpSentence); }}
               style={{ flexShrink: 0, width: 32, height: 32, padding: 0, border: 'none', background: 'transparent', cursor: 'pointer', fontSize: '1.1em' }}
-              aria-label={callLang === 'en' ? 'play in English (disabled)' : '日语朗读'}
+              aria-label={callLang === 'en' ? (isEnUi ? 'Play (disabled)' : '播放（不可用）') : (isEnUi ? 'Play Japanese' : '日语朗读')}
             >
               🔈
             </button>
@@ -149,7 +152,7 @@ export function OrderVoucher() {
               onClick={openMap}
               style={{ flexShrink: 0, padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border)', background: '#fff', cursor: 'pointer', fontSize: '0.85em' }}
             >
-              {callLang === 'en' ? 'Navigate' : '导航'}
+              {callLang === 'en' ? 'Navigate' : (isEnUi ? 'Navigate' : '导航')}
             </button>
           </div>
           <p style={{ ...labelGray, marginTop: 0 }}>{cnAddress}</p>

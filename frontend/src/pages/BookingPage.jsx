@@ -3,7 +3,8 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { BookingForm } from '../BookingForm';
 import { OrderResult } from '../OrderResult';
 import { useAuth } from '../context/AuthContext';
-import { TitleBar } from '../components/TitleBar';
+import { PageTitleBar } from '../components/TitleBar';
+import { useUiLang } from '../context/UiLangContext';
 import '../App.css';
 
 /** 预约页：无需登录即可填写并提交；已登录时订单会关联账号；支持 state.orderNo 打开已有订单（支付/拨打） */
@@ -11,7 +12,10 @@ export function BookingPage() {
   const { isLoggedIn, apiBase, fetchWithAuth, safeResJson } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const { uiLang } = useUiLang();
+  const isEn = uiLang === 'en';
   const [order, setOrder] = useState(null);
+  const presetRestaurant = location.state?.presetRestaurant || null;
 
   const loadOrderByNo = useCallback(async (orderNo) => {
     if (!orderNo) return;
@@ -46,12 +50,16 @@ export function BookingPage() {
 
   return (
     <div className="app">
-      <TitleBar />
+      {order ? (
+        <PageTitleBar title={isEn ? 'Payment' : '支付'} onBackClick={() => setOrder(null)} showLangToggle />
+      ) : (
+        <PageTitleBar title={isEn ? 'Book' : '预约'} backTo="/" showLangToggle />
+      )}
       <main className="main">
         {order ? (
           <OrderResult order={order} apiBase={apiBase} onReset={() => setOrder(null)} />
         ) : (
-          <BookingForm onSubmit={handleSubmit} apiBase={apiBase} />
+          <BookingForm onSubmit={handleSubmit} apiBase={apiBase} initial={presetRestaurant} />
         )}
       </main>
     </div>

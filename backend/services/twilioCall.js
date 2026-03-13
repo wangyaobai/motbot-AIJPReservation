@@ -29,14 +29,19 @@ export async function startTwilioCallForOrder(order) {
   } else {
     toE164 = '+' + to;
   }
+
+  // Twilio 拉取 TwiML/回调应命中后端 /api 路由（server.js 挂载在 /api/twilio）。
+  // 如果这里写成 /twilio，生产环境可能 404，餐厅端会听到 “Configure your numbers voice url”。
+  const apiBase = `${baseUrl}/api/twilio`;
+
   const call = await client.calls.create({
     to: toE164,
     from,
-    url: `${baseUrl}/twilio/voice/${order.order_no}`,
-    statusCallback: `${baseUrl}/twilio/status`,
+    url: `${apiBase}/voice/${order.order_no}`,
+    statusCallback: `${apiBase}/status`,
     // Twilio 要求字符串 'true' 或 'false'
     record: 'true',
-    recordingStatusCallback: `${baseUrl}/twilio/recording`,
+    recordingStatusCallback: `${apiBase}/recording`,
     recordingStatusCallbackEvent: ['completed'],
     timeout: 30,
   });

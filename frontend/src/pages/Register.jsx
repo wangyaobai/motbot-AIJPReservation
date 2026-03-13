@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useUiLang } from '../context/UiLangContext';
 
 function passwordStrength(pwd) {
   if (!pwd) return { level: 0, text: '' };
@@ -17,6 +18,8 @@ export function Register() {
   const { setToken, apiBase, safeResJson } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const { uiLang } = useUiLang();
+  const isEnUi = uiLang === 'en';
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
   const [password, setPassword] = useState('');
@@ -30,7 +33,7 @@ export function Register() {
   const sendCode = async () => {
     const raw = phone.trim().replace(/\D/g, '');
     if (raw.length < 11) {
-      setError('请填写正确手机号');
+      setError(isEnUi ? 'Please enter a valid phone number.' : '请填写正确手机号');
       return;
     }
     setError('');
@@ -41,13 +44,13 @@ export function Register() {
         body: JSON.stringify({ phone: raw, region: 'cn' }),
       });
       const data = await safeResJson(res);
-      if (!data.ok) throw new Error(data.message || '发送失败');
+      if (!data.ok) throw new Error(data.message || (isEnUi ? 'Send failed' : '发送失败'));
       setCooldown(60);
       const t = setInterval(() => {
         setCooldown((c) => (c <= 1 ? (clearInterval(t), 0) : c - 1));
       }, 1000);
     } catch (e) {
-      setError(e.message || '发送验证码失败');
+      setError(e.message || (isEnUi ? 'Failed to send code.' : '发送验证码失败'));
     }
   };
 
@@ -56,19 +59,19 @@ export function Register() {
     setError('');
     const raw = phone.trim().replace(/\D/g, '');
     if (!raw) {
-      setError('请填写手机号');
+      setError(isEnUi ? 'Please enter your phone number.' : '请填写手机号');
       return;
     }
     if (!code.trim()) {
-      setError('请填写验证码');
+      setError(isEnUi ? 'Please enter the code.' : '请填写验证码');
       return;
     }
     if (!/^[a-zA-Z0-9]{6,16}$/.test(password) || !/[a-zA-Z]/.test(password) || !/\d/.test(password)) {
-      setError('密码须 6-16 位，且包含字母和数字');
+      setError(isEnUi ? 'Password must be 6-16 chars and include letters + numbers.' : '密码须 6-16 位，且包含字母和数字');
       return;
     }
     if (!agree) {
-      setError('请先同意隐私协议');
+      setError(isEnUi ? 'Please agree to the privacy policy.' : '请先同意隐私协议');
       return;
     }
     setLoading(true);
@@ -85,12 +88,12 @@ export function Register() {
         }),
       });
       const data = await safeResJson(res);
-      if (!data.ok) throw new Error(data.message || '注册失败');
+      if (!data.ok) throw new Error(data.message || (isEnUi ? 'Sign up failed' : '注册失败'));
       setToken(data.token, data.user);
       const from = location.state?.from || '/orders';
       navigate(from, { replace: true });
     } catch (e) {
-      setError(e.message || '注册失败');
+      setError(e.message || (isEnUi ? 'Sign up failed' : '注册失败'));
     } finally {
       setLoading(false);
     }
@@ -98,23 +101,23 @@ export function Register() {
 
   return (
     <div className="card" style={{ maxWidth: 400, margin: '24px auto' }}>
-      <h2>注册</h2>
+      <h2>{isEnUi ? 'Sign up' : '注册'}</h2>
       <form onSubmit={handleSubmit}>
         <div className="form-row">
-          <label>手机号</label>
+          <label>{isEnUi ? 'Phone' : '手机号'}</label>
           <input
             type="tel"
-            placeholder="请输入手机号"
+            placeholder={isEnUi ? 'Enter phone number' : '请输入手机号'}
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
           />
         </div>
         <div className="form-row">
-          <label>验证码</label>
+          <label>{isEnUi ? 'Verification code' : '验证码'}</label>
           <div style={{ display: 'flex', gap: 8 }}>
             <input
               type="text"
-              placeholder="请输入验证码"
+              placeholder={isEnUi ? 'Enter code' : '请输入验证码'}
               value={code}
               onChange={(e) => setCode(e.target.value)}
               maxLength={6}
@@ -126,21 +129,23 @@ export function Register() {
               onClick={sendCode}
               disabled={cooldown > 0}
             >
-              {cooldown > 0 ? `${cooldown}s 后重发` : '获取验证码'}
+              {cooldown > 0
+                ? (isEnUi ? `Resend in ${cooldown}s` : `${cooldown}s 后重发`)
+                : (isEnUi ? 'Send code' : '获取验证码')}
             </button>
           </div>
         </div>
         <div className="form-row">
-          <label>设置密码（6-16 位，含字母和数字）</label>
+          <label>{isEnUi ? 'Password (6-16 chars, letters + numbers)' : '设置密码（6-16 位，含字母和数字）'}</label>
           <input
             type="password"
-            placeholder="请输入密码"
+            placeholder={isEnUi ? 'Enter password' : '请输入密码'}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
           {password && strength.text && (
             <span className="text-muted" style={{ fontSize: 0.85, marginTop: 4 }}>
-              强度：{strength.text}
+              {isEnUi ? 'Strength: ' : '强度：'}{strength.text}
             </span>
           )}
         </div>
@@ -151,15 +156,15 @@ export function Register() {
             checked={agree}
             onChange={(e) => setAgree(e.target.checked)}
           />
-          <label htmlFor="agree">我已阅读并同意《隐私协议》</label>
+          <label htmlFor="agree">{isEnUi ? 'I agree to the Privacy Policy' : '我已阅读并同意《隐私协议》'}</label>
         </div>
         {error && <p className="form-error">{error}</p>}
         <button type="submit" className="btn-primary" disabled={loading}>
-          {loading ? '注册中…' : '注册'}
+          {loading ? (isEnUi ? 'Signing up…' : '注册中…') : (isEnUi ? 'Sign up' : '注册')}
         </button>
       </form>
       <p style={{ marginTop: 16, fontSize: 0.9 }}>
-        已有账号？ <Link to="/login" state={location.state}>去登录</Link>
+        {isEnUi ? 'Already have an account?' : '已有账号？'} <Link to="/login" state={location.state}>{isEnUi ? 'Sign in' : '去登录'}</Link>
       </p>
     </div>
   );

@@ -17,7 +17,8 @@ export function formatLocalDateTime(serverDateTime) {
     return serverDateTime;
   }
   if (Number.isNaN(date.getTime())) return serverDateTime;
-  return date.toLocaleString('zh-CN', {
+  const locale = arguments[1] === 'en' ? 'en-US' : 'zh-CN';
+  return date.toLocaleString(locale, {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -29,11 +30,12 @@ export function formatLocalDateTime(serverDateTime) {
 }
 
 /**
- * 将 UTC 时间格式化为本地「X月X日 HH:mm」（用于预计拨打时间等）
+ * 将 UTC 时间格式化为本地「X月X日 HH:mm」或英文 "Mon DD, HH:mm"
  * @param {string} isoOrServerDateTime - ISO 或 "YYYY-MM-DD HH:mm:ss"
- * @returns {string} 如 "2月26日 15:33"
+ * @param {string} [locale] - 'en' 时输出英文格式
+ * @returns {string} 如 "2月26日 15:33" 或 "Mar 26, 15:33"
  */
-export function formatLocalEstimate(isoOrServerDateTime) {
+export function formatLocalEstimate(isoOrServerDateTime, locale) {
   if (!isoOrServerDateTime || typeof isoOrServerDateTime !== 'string') return '';
   const s = isoOrServerDateTime.trim();
   if (!s) return '';
@@ -41,10 +43,15 @@ export function formatLocalEstimate(isoOrServerDateTime) {
   try {
     const date = new Date(iso);
     if (Number.isNaN(date.getTime())) return '';
-    const mm = date.getMonth() + 1;
-    const dd = date.getDate();
     const hh = String(date.getHours()).padStart(2, '0');
     const min = String(date.getMinutes()).padStart(2, '0');
+    if (locale === 'en') {
+      const mon = date.toLocaleString('en-US', { month: 'short' });
+      const dd = date.getDate();
+      return `${mon} ${dd}, ${hh}:${min}`;
+    }
+    const mm = date.getMonth() + 1;
+    const dd = date.getDate();
     return `${mm}月${dd}日 ${hh}:${min}`;
   } catch {
     return '';
@@ -54,11 +61,12 @@ export function formatLocalEstimate(isoOrServerDateTime) {
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
 
 /**
- * 将 UTC 时间格式化为日本时间 JST「X月X日 HH:mm」（预计拨打时间按餐厅营业时间，显示日本时间）
+ * 将 UTC 时间格式化为日本时间 JST「X月X日 HH:mm」或英文 "Mon DD, HH:mm"
  * @param {string} isoOrServerDateTime - 后端存的 UTC ISO 或 "YYYY-MM-DD HH:mm:ss"
- * @returns {string} 如 "2月27日 11:00"
+ * @param {string} [locale] - 'en' 时输出英文格式
+ * @returns {string} 如 "2月27日 11:00" 或 "Mar 27, 11:00"
  */
-export function formatEstimateJst(isoOrServerDateTime) {
+export function formatEstimateJst(isoOrServerDateTime, locale) {
   if (!isoOrServerDateTime || typeof isoOrServerDateTime !== 'string') return '';
   const s = isoOrServerDateTime.trim();
   if (!s) return '';
@@ -67,10 +75,15 @@ export function formatEstimateJst(isoOrServerDateTime) {
     const date = new Date(iso);
     if (Number.isNaN(date.getTime())) return '';
     const jst = new Date(date.getTime() + JST_OFFSET_MS);
-    const mm = jst.getUTCMonth() + 1;
-    const dd = jst.getUTCDate();
     const hh = String(jst.getUTCHours()).padStart(2, '0');
     const min = String(jst.getUTCMinutes()).padStart(2, '0');
+    if (locale === 'en') {
+      const mon = new Date(jst.getUTCFullYear(), jst.getUTCMonth(), jst.getUTCDate()).toLocaleString('en-US', { month: 'short' });
+      const dd = jst.getUTCDate();
+      return `${mon} ${dd}, ${hh}:${min}`;
+    }
+    const mm = jst.getUTCMonth() + 1;
+    const dd = jst.getUTCDate();
     return `${mm}月${dd}日 ${hh}:${min}`;
   } catch {
     return '';

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { PageTitleBar } from '../components/TitleBar';
+import { useUiLang } from '../context/UiLangContext';
 
 function formatDuration(sec) {
   if (sec == null || Number.isNaN(sec)) return '0:00';
@@ -59,6 +60,8 @@ export function OrderAiRecord() {
   const { orderNo } = useParams();
   const { isLoggedIn, fetchWithAuth, safeResJson, apiBase } = useAuth();
   const navigate = useNavigate();
+  const { uiLang } = useUiLang();
+  const isEnUi = uiLang === 'en';
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -88,9 +91,9 @@ export function OrderAiRecord() {
   if (loading) {
     return (
       <div className="app app-page-with-white">
-        <PageTitleBar title="AI沟通记录" backTo={`/orders/${orderNo}`} />
+        <PageTitleBar title={isEnUi ? 'AI call transcript' : 'AI沟通记录'} showLangToggle backTo={`/orders/${orderNo}`} />
         <div className="page-white-body">
-          <div style={{ margin: 16 }}>加载中…</div>
+          <div style={{ margin: 16 }}>{isEnUi ? 'Loading…' : '加载中…'}</div>
         </div>
       </div>
     );
@@ -98,11 +101,11 @@ export function OrderAiRecord() {
   if (error || !order) {
     return (
       <div className="app app-page-with-white">
-        <PageTitleBar title="AI沟通记录" backTo="/orders" />
+        <PageTitleBar title={isEnUi ? 'AI call transcript' : 'AI沟通记录'} showLangToggle backTo="/orders" />
         <div className="page-white-body">
           <div style={{ padding: 16 }}>
-            <p className="form-error">{error || '订单不存在'}</p>
-            <Link to="/orders" className="link-btn">返回订单列表</Link>
+            <p className="form-error">{error || (isEnUi ? 'Order not found' : '订单不存在')}</p>
+            <Link to="/orders" className="link-btn">{isEnUi ? 'Back to orders' : '返回订单列表'}</Link>
           </div>
         </div>
       </div>
@@ -118,18 +121,22 @@ export function OrderAiRecord() {
 
   return (
     <div className="app app-page-with-white" style={{ paddingBottom: 24 }}>
-      <PageTitleBar title="AI沟通记录" backTo={`/orders/${orderNo}`} />
+      <PageTitleBar title={isEnUi ? 'AI call transcript' : 'AI沟通记录'} showLangToggle backTo={`/orders/${orderNo}`} />
       <div className="page-white-body">
         <div className="page-header-white" />
         <div style={{ padding: '0 16px 16px' }}>
         <p style={{ marginBottom: 16, color: 'var(--text-muted)', fontSize: '0.9em' }}>
           {isEnCall
-            ? '以下为 AI 与餐厅通话内容转写（英语+中文），供您核对预约内容。'
-            : '以下为 AI 与餐厅通话内容转写（日语+中文），供您核对预约内容。'}
+            ? (isEnUi
+              ? 'Transcript of the AI call (English + Chinese) for your reference.'
+              : '以下为 AI 与餐厅通话内容转写（英语+中文），供您核对预约内容。')
+            : (isEnUi
+              ? 'Transcript of the AI call (Japanese + Chinese) for your reference.'
+              : '以下为 AI 与餐厅通话内容转写（日语+中文），供您核对预约内容。')}
         </p>
 
         <section style={{ marginBottom: 24 }}>
-          <h3 style={{ fontSize: '1em', marginBottom: 12 }}>沟通对话</h3>
+          <h3 style={{ fontSize: '1em', marginBottom: 12 }}>{isEnUi ? 'Conversation' : '沟通对话'}</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             {dialogue.map((line, i) => (
               <div
@@ -142,7 +149,9 @@ export function OrderAiRecord() {
                 }}
               >
                 <div style={{ fontSize: '0.8em', color: 'var(--text-muted)', marginBottom: 6 }}>
-                  {line.role === 'ai' ? (isEnCall ? 'AI（英语）' : 'AI（日语）') : '餐厅'}
+                  {line.role === 'ai'
+                    ? (isEnCall ? (isEnUi ? 'AI (English)' : 'AI（英语）') : (isEnUi ? 'AI (Japanese)' : 'AI（日语）'))
+                    : (isEnUi ? 'Restaurant' : '餐厅')}
                 </div>
                 <p style={{ margin: 0, fontSize: '0.95em', lineHeight: 1.5 }}>{line.ja}</p>
                 <p style={{ margin: '4px 0 0', fontSize: '0.9em', color: 'var(--text-muted)' }}>{line.zh}</p>
@@ -153,20 +162,20 @@ export function OrderAiRecord() {
 
         {order.summary_text && (
           <section style={{ marginBottom: 20 }}>
-            <h3 style={{ fontSize: '1em', marginBottom: 8 }}>通话摘要</h3>
+            <h3 style={{ fontSize: '1em', marginBottom: 8 }}>{isEnUi ? 'Summary' : '通话摘要'}</h3>
             <p style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{order.summary_text}</p>
           </section>
         )}
 
         {order.transcript_cn && (
           <section style={{ marginBottom: 20 }}>
-            <h3 style={{ fontSize: '1em', marginBottom: 8 }}>完整中文译文</h3>
+            <h3 style={{ fontSize: '1em', marginBottom: 8 }}>{isEnUi ? 'Full Chinese translation' : '完整中文译文'}</h3>
             <p style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6, color: 'var(--text-muted)', fontSize: '0.95em' }}>{order.transcript_cn}</p>
           </section>
         )}
 
         <section style={{ marginBottom: 0 }}>
-          <h3 style={{ fontSize: '1em', marginBottom: 8 }}>通话录音</h3>
+          <h3 style={{ fontSize: '1em', marginBottom: 8 }}>{isEnUi ? 'Recording' : '通话录音'}</h3>
           <audio
             src={hasRecording ? order.recording_url : ''}
             controls
@@ -174,7 +183,9 @@ export function OrderAiRecord() {
             style={{ width: '100%' }}
           />
           <p style={{ color: 'var(--text-muted)', fontSize: '0.85em', marginTop: 6 }}>
-            {hasRecording ? `总时长约 ${formatDuration(durSec)}，如有疑问可反复收听确认。` : '暂无通话录音。'}
+            {hasRecording
+              ? (isEnUi ? `Duration ~ ${formatDuration(durSec)}.` : `总时长约 ${formatDuration(durSec)}，如有疑问可反复收听确认。`)
+              : (isEnUi ? 'No recording available.' : '暂无通话录音。')}
           </p>
         </section>
         </div>
