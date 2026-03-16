@@ -181,26 +181,39 @@ router.get('/restaurants-without-cover', (req, res) => {
         items.push({ cityKey, cityZh, noData: true, message: '无餐厅列表', totalInCity: 0, withCoverCount: 0, needFill: true, restaurants: [] });
         continue;
       }
-      // 由于前端会对“加载失败的外链图”直接过滤，后端无法可靠预测哪些图能在浏览器展示。
-      // 因此后台以“手动封面数”为准：只要手动封面 < 10，就列出该城全部未手动的餐厅给你补齐。
+      // 后台尽量模拟“前端真实可展示数量”：
+      // - 有效图：存在 image_url，且不是兜底图，也不是高风险防盗链图源
+      // - 手动封面：附加统计，便于你了解已填多少
       let manualCount = 0;
+      let displayableCount = 0;
       for (const r of list) {
         if (!r) continue;
         const best = getBestCachedMedia({ cityHint: cityZh, name: r.name });
-        if (best?.manual_image_url && best.manual_enabled !== 0) manualCount += 1;
+        const manualUrl = best?.manual_image_url && best.manual_enabled !== 0 ? String(best.manual_image_url).trim() : '';
+        if (manualUrl) manualCount += 1;
+        const candidateUrl = manualUrl || String(r.image || '').trim();
+        if (candidateUrl && !isFallbackImage(candidateUrl) && !isLikelyFrontendBlockedImage(candidateUrl)) {
+          displayableCount += 1;
+        }
       }
-      const needFill = manualCount < 10;
+      const needFill = displayableCount < 10;
 
       const candidates = list.filter((r) => {
         if (!r) return false;
         const best = getBestCachedMedia({ cityHint: cityZh, name: r.name });
-        if (best?.manual_image_url && best.manual_enabled !== 0) return false;
-        // 若需补齐到 10：列出该城所有未手动的店
-        if (needFill) return true;
+        const manualUrl = best?.manual_image_url && best.manual_enabled !== 0 ? String(best.manual_image_url).trim() : '';
+        const imageUrl = String(r.image || '').trim();
+        const finalUrl = manualUrl || imageUrl;
+
+        const hasDisplayable =
+          finalUrl && !isFallbackImage(finalUrl) && !isLikelyFrontendBlockedImage(finalUrl);
+
+        // 若需补齐到 10：列出当前“实际不可展示”的店，供你优先补齐
+        if (needFill) return !hasDisplayable;
+
         // 若已不需要补齐：只列出明显需要处理的（兜底/需人工/高概率前端失败图源）
-        if (isFallbackImage(r?.image)) return true;
+        if (!hasDisplayable) return true;
         if (isNeedManualImageOnly(r)) return true;
-        if (isLikelyFrontendBlockedImage(r?.image)) return true;
         return false;
       });
       items.push({
@@ -208,6 +221,7 @@ router.get('/restaurants-without-cover', (req, res) => {
         cityZh: row.city_zh || cityZh,
         totalInCity: list.length,
         withCoverCount: manualCount,
+        displayableCount,
         needFill,
         noData: false,
         restaurants: candidates.map((r) => {
