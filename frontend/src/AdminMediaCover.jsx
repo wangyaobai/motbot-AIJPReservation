@@ -21,13 +21,36 @@ export function AdminMediaCover({ apiBase = API }) {
   const fileInputRef = useRef(null);
   const fileInputKeyRef = useRef(null);
 
+  const readApiResponse = async (res) => {
+    const ct = (res.headers?.get?.('content-type') || '').toLowerCase();
+    const isJson = ct.includes('application/json');
+    if (isJson) {
+      const data = await res.json().catch(() => ({}));
+      return { data, text: null, isJson: true };
+    }
+    const text = await res.text().catch(() => '');
+    return { data: null, text, isJson: false };
+  };
+
+  const assertOkJson = async (res, fallbackMsg) => {
+    const { data, text, isJson } = await readApiResponse(res);
+    if (isJson) {
+      if (data?.ok) return data;
+      throw new Error(data?.message || fallbackMsg || `请求失败（HTTP ${res.status}）`);
+    }
+    const snippet = String(text || '').slice(0, 200);
+    throw new Error(
+      `请求返回非JSON（HTTP ${res.status}）。` +
+        (snippet ? `返回片段：${snippet}` : '')
+    );
+  };
+
   const fetchList = async () => {
     setErr('');
     setLoading(true);
     try {
       const res = await fetch(`${apiBase}/admin/restaurants-without-cover`);
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.message || '加载失败');
+      const data = await assertOkJson(res, '加载失败');
       setItems(data.items || []);
       setUrlByKey({});
       if (data.items && data.items.length > 0) setErr('');
@@ -67,8 +90,7 @@ export function AdminMediaCover({ apiBase = API }) {
           enabled: 1,
         }),
       });
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.message || '保存失败');
+      await assertOkJson(res, '保存失败');
       setUrlByKey((prev) => ({ ...prev, [key]: '' }));
       fetchList();
       // 如果当前正在做“重复封面排查”，保存成功后自动刷新重复列表，
@@ -108,8 +130,7 @@ export function AdminMediaCover({ apiBase = API }) {
       const form = new FormData();
       form.append('cover', file);
       const res = await fetch(`${apiBase}/admin/media/upload-cover`, { method: 'POST', body: form });
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.message || '上传失败');
+      const data = await assertOkJson(res, '上传失败');
       updateUrl(cityKey, name, data.url || '');
     } catch (err) {
       alert(err.message || '上传失败');
@@ -131,15 +152,15 @@ export function AdminMediaCover({ apiBase = API }) {
         method: 'POST',
         headers: { 'x-admin-token': token },
       });
-      const data = await res.json().catch(() => ({}));
-      if (!data.ok) throw new Error(data.message || '本地化失败（可能超时或服务异常）');
+      await assertOkJson(res, '本地化失败（可能超时或服务异常）');
       setLocalizeMsg('已开始在后台下载外链封面到服务器，请稍候…');
 
       // 轮询进度，避免一次性请求超时导致 HTML 返回
       const poll = async () => {
-        const st = await fetch(`${apiBase}/admin/media/localize-covers/status`, {
+        const stRes = await fetch(`${apiBase}/admin/media/localize-covers/status`, {
           headers: { 'x-admin-token': token },
-        }).then((r) => r.json()).catch(() => null);
+        }).catch(() => null);
+        const st = stRes ? await readApiResponse(stRes).then((x) => x.data).catch(() => null) : null;
         if (!st?.ok) return;
         const msg = st.running
           ? `本地化中… ${st.localized ?? 0}/${st.total ?? 0}（失败 ${st.failed ?? 0}）`
@@ -195,12 +216,12 @@ export function AdminMediaCover({ apiBase = API }) {
     setRefining(true);
     try {
       const res = await fetch(`${apiBase}/admin/refine-recommendation-images`, { method: 'POST' });
-      const data = await res.json().catch(() => ({}));
-      if (data.ok) {
+      const { data } = await readApiResponse(res);
+      if (data?.ok) {
         setRefineMsg(data.message || '已开始后台补齐，约 1～2 分钟后请点击刷新查看。');
         setTimeout(() => fetchList(), 95000);
       } else {
-        setRefineMsg(data.message || '操作失败');
+        setRefineMsg(data?.message || '操作失败');
       }
     } catch (e) {
       setRefineMsg(e?.message || '请求失败');
