@@ -505,12 +505,13 @@ function EffectLoader({ city, apiBase, setRemote, setLoading }) {
         const url = `${apiBase}/recommendations?country=jp&city=${encodeURIComponent(city)}`;
         const resp = await fetch(url, { cache: 'no-store' });
         const data = await resp.json().catch(() => ({}));
-        if (!cancelled && data.ok && Array.isArray(data.restaurants)) {
+        if (!cancelled && data.ok && Array.isArray(data.restaurants) && data.restaurants.length > 0) {
           const byCity = filterListByCity(data.restaurants, city);
           const onlyWithCover = byCity.filter((r) => r && !isFallbackImage(r?.image));
           saveCachedRecommendations(city, onlyWithCover);
-          setRemote({ [city]: onlyWithCover });
+          setRemote({ [city]: onlyWithCover.length ? onlyWithCover : undefined });
         }
+        // API 失败或返回空时不再把 remote 置空，保留 undefined 以使用前端兜底示例列表
       } catch {
         // 忽略错误，前端自动使用内置示例数据兜底
       } finally {

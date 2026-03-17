@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 const API = import.meta.env.VITE_API_BASE || '/api';
 
@@ -10,6 +10,12 @@ export function AdminMediaCover({ apiBase = API }) {
   const [savingKey, setSavingKey] = useState(null);
   const [refineMsg, setRefineMsg] = useState('');
   const [refining, setRefining] = useState(false);
+  const [uploadingKey, setUploadingKey] = useState(null);
+  const [localizeMsg, setLocalizeMsg] = useState('');
+  const [localizing, setLocalizing] = useState(false);
+  const [adminToken, setAdminToken] = useState(() => typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('adminToken') || '' : '');
+  const fileInputRef = useRef(null);
+  const fileInputKeyRef = useRef(null);
 
   const fetchList = async () => {
     setErr('');
@@ -40,8 +46,9 @@ export function AdminMediaCover({ apiBase = API }) {
       alert('请填写图片 URL');
       return;
     }
-    if (!/^https?:\/\//i.test(url.trim())) {
-      alert('请输入以 http:// 或 https:// 开头的链接');
+    const trimmed = url.trim();
+    if (!trimmed.startsWith('/') && !/^https?:\/\//i.test(trimmed)) {
+      alert('请输入以 http(s):// 开头的链接，或使用「上传图片」得到本机地址');
       return;
     }
     setSavingKey(key);
@@ -52,7 +59,7 @@ export function AdminMediaCover({ apiBase = API }) {
         body: JSON.stringify({
           cityKey,
           name: name.trim(),
-          image_url: url.trim(),
+          image_url: trimmed,
           enabled: 1,
         }),
       });
@@ -70,6 +77,65 @@ export function AdminMediaCover({ apiBase = API }) {
   const updateUrl = (cityKey, name, value) => {
     setUrlByKey((prev) => ({ ...prev, [`${cityKey}|${name}`]: value }));
   };
+
+  const handleUploadCover = (cityKey, name) => {
+    fileInputKeyRef.current = `${cityKey}|${name}`;
+    fileInputRef.current?.click();
+  };
+
+  const onFileSelect = async (e) => {
+    const file = e.target?.files?.[0];
+    e.target.value = '';
+    const key = fileInputKeyRef.current;
+    if (!file || !key) return;
+    const [cityKey, ...nameParts] = key.split('|');
+    const name = nameParts.join('|');
+    if (!file.type.startsWith('image/')) {
+      alert('请选择图片文件（jpg/png/webp）');
+      return;
+    }
+    setUploadingKey(key);
+    try {
+      const form = new FormData();
+      form.append('cover', file);
+      const res = await fetch(`${apiBase}/admin/media/upload-cover`, { method: 'POST', body: form });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.message || '上传失败');
+      updateUrl(cityKey, name, data.url || '');
+    } catch (err) {
+      alert(err.message || '上传失败');
+    } finally {
+      setUploadingKey(null);
+    }
+  };
+
+  const runLocalize = async () => {
+    const token = (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('adminToken') : null) || adminToken?.trim();
+    if (!token) {
+      alert('请先填写 Admin Token（与服务器 Variables 中 ADMIN_TOKEN 一致），用于执行本地化操作');
+      return;
+    }
+    setLocalizing(true);
+    setLocalizeMsg('');
+    try {
+      const res = await fetch(`${apiBase}/admin/media/localize-covers`, {
+        method: 'POST',
+        headers: { 'x-admin-token': token },
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.message || '本地化失败');
+      setLocalizeMsg(`已将 ${data.localized ?? 0} 张外链封面下载到服务器并改为本地链接；${data.failed ?? 0} 张失败。`);
+      fetchList();
+    } catch (e) {
+      setLocalizeMsg(e.message || '本地化失败');
+    } finally {
+      setLocalizing(false);
+    }
+  };
+
+  useEffect(() => {
+    if (adminToken && typeof sessionStorage !== 'undefined') sessionStorage.setItem('adminToken', adminToken);
+  }, [adminToken]);
 
   const runRefine = async () => {
     setRefineMsg('');
@@ -110,7 +176,7 @@ export function AdminMediaCover({ apiBase = API }) {
     <div className="admin-media-cover">
       <p className="admin-media-summary">
         {total > 0 ? `共 ${total} 家餐厅可补充封面。` : '下方为各城市；暂无数据的城市请先访问首页对应 Tab 或运行 warm 脚本生成数据。'}
-        不足 10 家的城市会列出该城全部未填手动图的店（包括“有链接但前端可能加载失败”的图源），你可以逐个替换为可展示的图片 URL 并保存。
+        不足 10 家的城市会列出该城全部未填手动图的店（包括“有链接但前端可能加载失败”的图源），可粘贴外链，或使用「上传图片」存到服务器（避免外链失效）。
       </p>
       {err && <p className="form-error">{err}</p>}
       <div className="admin-media-actions">
@@ -125,8 +191,33 @@ export function AdminMediaCover({ apiBase = API }) {
         <button type="button" className="btn-refresh" onClick={fetchList} disabled={loading}>
           {loading ? '加载中…' : '刷新列表'}
         </button>
+        <span style={{ marginLeft: 8 }}>
+          <input
+            type="password"
+            placeholder="Admin Token（用于下方本地化）"
+            value={adminToken}
+            onChange={(e) => setAdminToken(e.target.value)}
+            style={{ width: 180, marginRight: 6, padding: '4px 8px' }}
+          />
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={localizing}
+            onClick={runLocalize}
+          >
+            {localizing ? '本地化中…' : '将已填外链封面下载到服务器'}
+          </button>
+        </span>
       </div>
       {refineMsg && <p className="admin-media-refine-msg">{refineMsg}</p>}
+      {localizeMsg && <p className="admin-media-refine-msg">{localizeMsg}</p>}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        style={{ display: 'none' }}
+        onChange={onFileSelect}
+      />
       {items.map((group) => (
         <div key={group.cityKey} className="admin-media-city">
           <h3>
@@ -171,12 +262,21 @@ export function AdminMediaCover({ apiBase = API }) {
                   </div>
                   <div className="admin-media-form">
                     <input
-                      type="url"
-                      placeholder="https://..."
+                      type="text"
+                      placeholder="https://... 或 /api/manual-covers/..."
                       value={url}
                       onChange={(e) => updateUrl(group.cityKey, r.name, e.target.value)}
                       className="admin-media-input"
                     />
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      disabled={uploadingKey === key}
+                      onClick={() => handleUploadCover(group.cityKey, r.name)}
+                      title="上传图片到服务器，避免外链失效"
+                    >
+                      {uploadingKey === key ? '上传中…' : '上传图片'}
+                    </button>
                     <button
                       type="button"
                       className="btn-primary"

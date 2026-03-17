@@ -5,4 +5,5 @@ node_modules/
 dist/
 backend/data/
 backend/public/tts/
+backend/public/manual-covers/
 .DS_Store

@@ -33,6 +33,10 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/tts', express.static(path.join(__dirname, 'public', 'tts')));
 // 试听接口返回同源 URL 时由前端 /api 代理请求到此，避免跨域/ngrok 导致播放失败
 app.use('/api/tts', express.static(path.join(__dirname, 'public', 'tts')));
+// 后台上传的封面图（存服务器本地，避免外链失效）
+const manualCoversDir = path.join(__dirname, 'public', 'manual-covers');
+if (!fs.existsSync(manualCoversDir)) fs.mkdirSync(manualCoversDir, { recursive: true });
+app.use('/api/manual-covers', express.static(manualCoversDir));
 
 // 用户认证与用户端订单（需登录）
 app.use('/api/user', userRouter);

@@ -5,10 +5,28 @@ import { getBestCachedMedia } from '../services/resolveRestaurantMedia.js';
 import { isNeedManualImageOnly, moveOkinawaFromOtherToOkinawa } from '../services/recommendationsStore.js';
 import { clearRecommendationsCache } from './recommendations.js';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
+import multer from 'multer';
+import { randomBytes } from 'crypto';
 import { importManualCoversFromJsonFile } from '../services/manualCovers.js';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const manualCoversDir = path.join(__dirname, '..', 'public', 'manual-covers');
+
 const router = Router();
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    if (!fs.existsSync(manualCoversDir)) fs.mkdirSync(manualCoversDir, { recursive: true });
+    cb(null, manualCoversDir);
+  },
+  filename: (req, file, cb) => {
+    const ext = (file.mimetype === 'image/png' ? '.png' : file.mimetype === 'image/webp' ? '.webp' : '.jpg');
+    cb(null, `${Date.now()}-${randomBytes(4).toString('hex')}${ext}`);
+  },
+});
+const uploadCover = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } }).single('cover');
 const db = getDb();
 
 let refineInFlight = false;
@@ -249,6 +267,65 @@ router.get('/restaurants-without-cover', (req, res) => {
   }
 });
 
+// 上传封面图到服务器本地，返回 /api/manual-covers/xxx 供保存为 manual_image_url
+router.post('/media/upload-cover', (req, res) => {
+  uploadCover(req, res, (err) => {
+    if (err) {
+      return res.status(400).json({ ok: false, message: err.message || '上传失败' });
+    }
+    if (!req.file || !req.file.filename) {
+      return res.status(400).json({ ok: false, message: '未选择文件' });
+    }
+    res.json({ ok: true, url: `/api/manual-covers/${req.file.filename}` });
+  });
+});
+
+// 将现有外链封面全部下载到服务器并改为本地链接（需 x-admin-token）
+router.post('/media/localize-covers', async (req, res) => {
+  if (!requireAdminToken(req, res)) return;
+  try {
+    const rows = db.prepare(
+      `SELECT cache_key, city_hint, restaurant_name, manual_image_url FROM restaurant_media_best
+       WHERE manual_image_url IS NOT NULL AND TRIM(manual_image_url) != '' AND manual_image_url LIKE 'http%'`
+    ).all();
+    if (!fs.existsSync(manualCoversDir)) fs.mkdirSync(manualCoversDir, { recursive: true });
+    let done = 0;
+    let failed = 0;
+    const updateStmt = db.prepare(
+      'UPDATE restaurant_media_best SET manual_image_url = ?, updated_at = datetime(\'now\') WHERE cache_key = ?'
+    );
+    for (const row of rows) {
+      try {
+        const controller = new AbortController();
+        const t = setTimeout(() => controller.abort(), 10000);
+        const resp = await fetch(row.manual_image_url, {
+          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; RestaurantBookingBot/1.0)' },
+          signal: controller.signal,
+        });
+        clearTimeout(t);
+        if (!resp.ok) {
+          failed += 1;
+          continue;
+        }
+        const contentType = resp.headers.get('content-type') || '';
+        const ext = contentType.includes('png') ? '.png' : contentType.includes('webp') ? '.webp' : '.jpg';
+        const filename = `${row.cache_key.replace(/[^a-zA-Z0-9_-]/g, '_')}${ext}`;
+        const filepath = path.join(manualCoversDir, filename);
+        const buf = Buffer.from(await resp.arrayBuffer());
+        fs.writeFileSync(filepath, buf);
+        const localUrl = `/api/manual-covers/${filename}`;
+        updateStmt.run(localUrl, row.cache_key);
+        done += 1;
+      } catch {
+        failed += 1;
+      }
+    }
+    res.json({ ok: true, localized: done, failed, total: rows.length });
+  } catch (e) {
+    res.status(500).json({ ok: false, message: e?.message || 'Server error' });
+  }
+});
+
 // 手动设置餐厅封面图（写入 SQLite，长期生效）
 router.post('/media/manual-image', (req, res) => {
   try {
@@ -258,7 +335,8 @@ router.post('/media/manual-image', (req, res) => {
     const url = String(image_url || '').trim();
     const manualEnabled = enabled === 0 || enabled === false ? 0 : 1;
     if (!n) return res.json({ ok: false, message: 'Missing restaurant name' });
-    if (!url || !/^https?:\/\//i.test(url)) return res.json({ ok: false, message: 'Invalid image_url' });
+    const validUrl = url && (url.startsWith('/') || /^https?:\/\//i.test(url));
+    if (!validUrl) return res.json({ ok: false, message: '请填写图片链接（http(s) 或本地上传后的 /api/manual-covers/...）' });
 
     const cacheKey = `best:${cityZh}|${n}`;
     // 先读出已有 data_json（避免覆盖历史最佳图/链接）
