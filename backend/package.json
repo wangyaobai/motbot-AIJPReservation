@@ -10,7 +10,8 @@
     "init-db": "node scripts/init-db.js",
     "warm": "node scripts/warm-recommendations.js",
     "refine-images": "node scripts/refine-recommendation-images.js",
-    "import-covers": "node scripts/import-manual-covers.js"
+    "import-covers": "node scripts/import-manual-covers.js",
+    "refresh-crawlers": "node scripts/refresh-from-crawlers.js"
   },
   "dependencies": {
     "@alicloud/dysmsapi-2017-05-25": "^1.0.1",

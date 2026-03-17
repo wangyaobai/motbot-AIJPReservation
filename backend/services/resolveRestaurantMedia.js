@@ -1,4 +1,5 @@
 import { getDb } from '../db.js';
+import { localizeImageUrl } from './localizeImage.js';
 
 const cache = new Map();
 const CACHE_TTL_MS_OK = 24 * 60 * 60 * 1000;
@@ -606,6 +607,16 @@ export async function resolveRestaurantMediaBatch({ cityZh, restaurants, budgetM
     // 最终兜底校验：有区域约束时绝不输出跨区 Tabelog 链接
     if (areaSlug && links.tabelog_url && !tabelogUrlMatchesArea(areaSlug, links.tabelog_url)) {
       links.tabelog_url = '';
+    }
+
+    // 外链图片本地化：拉到后保存到服务器，避免外链失效
+    if (image_url && isHttpUrl(image_url) && !image_url.startsWith('/')) {
+      try {
+        const localUrl = await localizeImageUrl(image_url, key);
+        if (localUrl && localUrl.startsWith('/')) image_url = localUrl;
+      } catch {
+        // 本地化失败则保留原 URL
+      }
     }
 
     const val = {
