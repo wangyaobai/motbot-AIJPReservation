@@ -17,6 +17,7 @@ export function AdminMediaCover({ apiBase = API }) {
   const [dupLoading, setDupLoading] = useState(false);
   const [dupErr, setDupErr] = useState('');
   const [dupGroups, setDupGroups] = useState([]);
+  const [dupQuery, setDupQuery] = useState(null); // { url?: string, prefix?: string }
   const fileInputRef = useRef(null);
   const fileInputKeyRef = useRef(null);
 
@@ -70,6 +71,11 @@ export function AdminMediaCover({ apiBase = API }) {
       if (!data.ok) throw new Error(data.message || '保存失败');
       setUrlByKey((prev) => ({ ...prev, [key]: '' }));
       fetchList();
+      // 如果当前正在做“重复封面排查”，保存成功后自动刷新重复列表，
+      // 使已修复（不再重复）的餐厅/分组自动从页面消失。
+      if (dupQuery) {
+        fetchDuplicates(dupQuery).catch(() => {});
+      }
     } catch (e) {
       alert(e.message || '保存失败');
     } finally {
@@ -153,7 +159,7 @@ export function AdminMediaCover({ apiBase = API }) {
     }
   };
 
-  const fetchDuplicates = async ({ url } = {}) => {
+  const fetchDuplicates = async ({ url, prefix } = {}) => {
     const token = (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('adminToken') : null) || adminToken?.trim();
     if (!token) {
       alert('请先填写 Admin Token（用于查询重复封面）');
@@ -165,7 +171,8 @@ export function AdminMediaCover({ apiBase = API }) {
     try {
       const qs = new URLSearchParams();
       if (url) qs.set('url', url);
-      else qs.set('prefix', '/api/manual-covers/best');
+      else qs.set('prefix', prefix || '/api/manual-covers/best');
+      setDupQuery(url ? { url } : { prefix: prefix || '/api/manual-covers/best' });
       const res = await fetch(`${apiBase}/admin/media/duplicate-manual-covers?${qs.toString()}`, {
         headers: { 'x-admin-token': token },
       });
