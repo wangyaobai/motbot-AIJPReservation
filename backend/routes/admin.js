@@ -86,6 +86,22 @@ function cityZhFromKey(cityKey) {
   return map[k] || k || '东京';
 }
 
+function cityKeyFromZh(cityZh) {
+  const z = String(cityZh || '').trim();
+  const map = {
+    北海道: 'hokkaido',
+    东京: 'tokyo',
+    大阪: 'osaka',
+    名古屋: 'nagoya',
+    京都: 'kyoto',
+    神户: 'kobe',
+    冲绳: 'okinawa',
+    九州: 'kyushu',
+    日本其他地区: 'other',
+  };
+  return map[z] || '';
+}
+
 const FALLBACK_IMAGE = 'https://images.pexels.com/photos/4106483/pexels-photo-4106483.jpeg';
 
 function isFallbackImage(url) {
@@ -376,6 +392,53 @@ router.post('/media/localize-covers', (req, res) => {
 router.get('/media/localize-covers/status', (req, res) => {
   if (!requireAdminToken(req, res)) return;
   res.json(getLocalizeStatus());
+});
+
+// 查找重复的手动封面（用于排查 best________.webp 等被覆盖导致的串图问题；需 x-admin-token）
+router.get('/media/duplicate-manual-covers', (req, res) => {
+  if (!requireAdminToken(req, res)) return;
+  try {
+    const prefix = String(req.query?.prefix || '/api/manual-covers/best').trim();
+    const url = String(req.query?.url || '').trim();
+    const like = `${prefix}%`;
+
+    const rows = db.prepare(
+      `SELECT manual_image_url, COUNT(*) AS cnt
+       FROM restaurant_media_best
+       WHERE manual_image_url IS NOT NULL AND TRIM(manual_image_url) != ''
+         AND (
+           (? != '' AND manual_image_url = ?)
+           OR (? = '' AND manual_image_url LIKE ?)
+         )
+       GROUP BY manual_image_url
+       HAVING COUNT(*) > 1
+       ORDER BY cnt DESC`
+    ).all(url, url, url, like);
+
+    const detail = db.prepare(
+      `SELECT cache_key, city_hint, restaurant_name, manual_image_url, manual_enabled, updated_at
+       FROM restaurant_media_best
+       WHERE manual_image_url = ?
+       ORDER BY updated_at DESC`
+    );
+
+    const groups = rows.map((r) => {
+      const items = detail.all(r.manual_image_url).map((it) => ({
+        cache_key: it.cache_key,
+        city_hint: it.city_hint,
+        cityKey: cityKeyFromZh(it.city_hint),
+        restaurant_name: it.restaurant_name,
+        manual_image_url: it.manual_image_url,
+        manual_enabled: it.manual_enabled,
+        updated_at: it.updated_at,
+      }));
+      return { manual_image_url: r.manual_image_url, cnt: r.cnt, items };
+    });
+
+    res.json({ ok: true, prefix, url, groups });
+  } catch (e) {
+    res.status(500).json({ ok: false, message: e?.message || 'Server error' });
+  }
 });
 
 // 手动设置餐厅封面图（写入 SQLite，长期生效）
