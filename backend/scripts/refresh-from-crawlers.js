@@ -1,18 +1,18 @@
 /**
- * 从 Tabelog + Wikidata 米其林爬取餐厅，写入 recommendations_best。
- * - 主数据源：米其林官网（Wikidata SPARQL）+ Tabelog 高评
- * - 保留已有数据：手动封面、历史 restaurant_media_best 继续保留
- * - 补图：沿用 Tabelog/Wikidata/Yelp，拉到后本地化保存
- * - 城市：8 主城 + other（横滨/埼玉/千叶/仙台/广岛等）
+ * 从 Tabelog + Wikidata 米其林爬取餐厅。
+ * - 默认：备份 recommendations_best 到兜底表，爬取写入 recommendations_crawled，需后台确认后进入前端
+ * - --auto-merge：自动合并到 recommendations_best（适合 crontab）
+ * - --replace：与 --auto-merge 联用时完全覆盖，不保留旧数据
  *
  * 用法：
  *   cd backend && node scripts/refresh-from-crawlers.js
  *   node scripts/refresh-from-crawlers.js --city=tokyo
  *   node scripts/refresh-from-crawlers.js --dry-run
- *
- * crontab 每周：0 3 * * 0 cd /path/to/backend && node scripts/refresh-from-crawlers.js
+ *   node scripts/refresh-from-crawlers.js --auto-merge   # 自动合并到前端
+ *   node scripts/refresh-from-crawlers.js --auto-merge --replace
  */
 import 'dotenv/config';
+import { ensureSchema } from '../db.js';
 import {
   writeBestRecommendations,
   readBestRecommendations,
@@ -21,6 +21,8 @@ import {
   filterOtherCityList,
   applyBestMediaOverlay,
   isFallbackImage,
+  backupToFallback,
+  writeCrawledRecommendations,
 } from '../services/recommendationsStore.js';
 import { clearRecommendationsCache } from '../routes/recommendations.js';
 import { crawlTabelogCity, crawlTabelogOther } from '../services/crawlers/tabelog.js';
@@ -62,10 +64,19 @@ function mergeWithExisting(existing, crawled, cityKey, cityZh) {
 async function main() {
   const args = process.argv.slice(2);
   const dryRun = args.includes('--dry-run');
+  const replace = args.includes('--replace');
+  const autoMerge = args.includes('--auto-merge');
   const cityArg = args.find((a) => a.startsWith('--city='));
   const cities = cityArg ? [cityArg.split('=')[1]] : JP_CITIES;
 
-  console.log('[refresh] 开始，城市:', cities.join(', '), dryRun ? '(dry-run)' : '');
+  ensureSchema();
+  console.log('[refresh] 开始，城市:', cities.join(', '), dryRun ? '(dry-run)' : '', replace ? '(--replace 完全覆盖)' : '', autoMerge ? '(--auto-merge 自动合并到前端)' : '');
+
+  // 0) 备份 recommendations_best 到 recommendations_fallback（兜底）
+  if (!dryRun) {
+    const backed = backupToFallback();
+    console.log('[refresh] 已备份', backed, '城到兜底表');
+  }
 
   // 1) Wikidata 米其林（一次性拉取，按 cityKey 分组）
   let michelinByCity = {};
@@ -157,19 +168,34 @@ async function main() {
         console.warn('[refresh] 补图失败', cityKey, e?.message);
       }
 
-      // 5) 合并已有：保留手动封面、历史好图
-      const best = readBestRecommendations({ country: 'jp', cityKey });
-      const existing = best?.restaurants ? applyBestMediaOverlay({ restaurants: best.restaurants, cityZh }) : [];
-      const merged = mergeWithExisting(existing, list, cityKey, cityZh);
+      // 5) 写入爬取数据到 recommendations_crawled（供后台查看、补封面、确认）
+      const noCover = list.filter((r) => !r.image || isFallbackImage(r.image)).length;
+      if (!dryRun && list.length > 0) {
+        writeCrawledRecommendations({ country: 'jp', cityKey, cityZh, restaurants: list });
+        console.log('[refresh]', cityKey, '爬取', list.length, '家，缺封面', noCover, '家 -> 已入库 recommendations_crawled');
+      }
 
-      const final = merged.slice(0, TARGET);
-      allResults.push({ cityKey, count: final.length, total: list.length });
-
-      if (!dryRun && final.length > 0) {
-        writeBestRecommendations({ country: 'jp', cityKey, cityZh, restaurants: final });
-        console.log('[refresh]', cityKey, '写入', final.length, '家');
+      // 6) --auto-merge 时合并到 recommendations_best（否则需后台人工确认后进入前端）
+      let final;
+      if (autoMerge) {
+        if (replace) {
+          final = list.slice(0, TARGET);
+        } else {
+          const best = readBestRecommendations({ country: 'jp', cityKey });
+          const existing = best?.restaurants ? applyBestMediaOverlay({ restaurants: best.restaurants, cityZh }) : [];
+          const merged = mergeWithExisting(existing, list, cityKey, cityZh);
+          final = merged.slice(0, TARGET);
+        }
+        allResults.push({ cityKey, count: final.length, total: list.length });
+        if (!dryRun && final.length > 0) {
+          writeBestRecommendations({ country: 'jp', cityKey, cityZh, restaurants: final });
+          console.log('[refresh]', cityKey, '自动合并到前端', final.length, '家');
+        }
       } else {
-        console.log('[refresh]', cityKey, '将写入', final.length, '家', dryRun ? '(dry-run)' : '');
+        allResults.push({ cityKey, count: 0, total: list.length });
+        if (!dryRun) {
+          console.log('[refresh]', cityKey, '已入库，需后台确认后进入前端展示');
+        }
       }
 
       await new Promise((r) => setTimeout(r, 3000));
@@ -178,7 +204,7 @@ async function main() {
     }
   }
 
-  if (!dryRun && allResults.some((r) => r.count > 0)) {
+  if (!dryRun && autoMerge && allResults.some((r) => r.count > 0)) {
     clearRecommendationsCache();
     console.log('[refresh] 已清理内存缓存，前端将读取最新数据');
   }

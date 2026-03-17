@@ -225,3 +225,89 @@ export function moveOkinawaFromOtherToOkinawa() {
 
   return { moved, otherLeft: otherRest.length, okinawaTotal: okinawaFinal.length };
 }
+
+/** 备份 recommendations_best 到 recommendations_fallback（兜底数据） */
+export function backupToFallback() {
+  const db = getDb();
+  const rows = db.prepare(
+    'SELECT cache_key, country, city_key, city_zh, restaurants_json FROM recommendations_best WHERE country = ?'
+  ).all('jp');
+  let count = 0;
+  for (const r of rows) {
+    db.prepare(
+      `INSERT INTO recommendations_fallback (cache_key, country, city_key, city_zh, restaurants_json, updated_at)
+       VALUES (?, ?, ?, ?, ?, datetime('now'))
+       ON CONFLICT(cache_key) DO UPDATE SET
+         country = excluded.country,
+         city_key = excluded.city_key,
+         city_zh = excluded.city_zh,
+         restaurants_json = excluded.restaurants_json,
+         updated_at = datetime('now')`
+    ).run(r.cache_key, r.country, r.city_key, r.city_zh, r.restaurants_json);
+    count += 1;
+  }
+  return count;
+}
+
+/** 写入爬取数据到 recommendations_crawled，并标记每家的 has_cover */
+export function writeCrawledRecommendations({ country, cityKey, cityZh, restaurants } = {}) {
+  const db = getDb();
+  const key = recoCacheKey(country || 'jp', cityKey);
+  const list = Array.isArray(restaurants) ? restaurants : [];
+  const withCoverFlag = list.map((r) => ({
+    ...r,
+    has_cover: !!(r?.image && !isFallbackImage(r.image)),
+  }));
+  const zh = String(cityZh || getCityZh(cityKey)).trim();
+  db.prepare(
+    `INSERT INTO recommendations_crawled (cache_key, country, city_key, city_zh, restaurants_json, crawled_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+     ON CONFLICT(cache_key) DO UPDATE SET
+       city_zh = excluded.city_zh,
+       restaurants_json = excluded.restaurants_json,
+       updated_at = datetime('now')`
+  ).run(key, String(country || 'jp').toLowerCase(), String(cityKey || '').toLowerCase(), zh, JSON.stringify(withCoverFlag));
+}
+
+/** 读取兜底数据 */
+export function readFallbackRecommendations({ country, cityKey } = {}) {
+  try {
+    const db = getDb();
+    const key = recoCacheKey(country || 'jp', cityKey);
+    const row = db
+      .prepare('SELECT restaurants_json, city_zh, updated_at FROM recommendations_fallback WHERE cache_key = ?')
+      .get(key);
+    if (!row?.restaurants_json) return null;
+    const arr = JSON.parse(row.restaurants_json);
+    if (!Array.isArray(arr) || arr.length === 0) return null;
+    return {
+      restaurants: arr,
+      cityZh: typeof row.city_zh === 'string' ? row.city_zh : getCityZh(cityKey),
+      updatedAt: row.updated_at || '',
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** 读取爬取数据 */
+export function readCrawledRecommendations({ country, cityKey } = {}) {
+  try {
+    const db = getDb();
+    const key = recoCacheKey(country || 'jp', cityKey);
+    const row = db
+      .prepare('SELECT restaurants_json, city_zh, crawled_at, updated_at FROM recommendations_crawled WHERE cache_key = ?')
+      .get(key);
+    if (!row?.restaurants_json) return null;
+    const arr = JSON.parse(row.restaurants_json);
+    if (!Array.isArray(arr)) return null;
+    return {
+      restaurants: arr,
+      cityZh: typeof row.city_zh === 'string' ? row.city_zh : getCityZh(cityKey),
+      crawledAt: row.crawled_at || '',
+      updatedAt: row.updated_at || '',
+    };
+  } catch {
+    return null;
+  }
+}

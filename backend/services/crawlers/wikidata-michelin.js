@@ -60,7 +60,7 @@ SELECT ?item ?itemLabel ?addr ?phone ?prefLabel WHERE {
   ?item wdt:P31 wd:Q11707 .
   ?item wdt:P166 ?award .
   VALUES ?award { ${starFilter} }
-  ?item wdt:P131* wd:Q17 .
+  { ?item wdt:P17 wd:Q17 } UNION { ?item wdt:P131* wd:Q17 }
   OPTIONAL { ?item wdt:P969 ?addr }
   OPTIONAL { ?item wdt:P1329 ?phone }
   OPTIONAL {
@@ -80,7 +80,10 @@ SELECT ?item ?itemLabel ?addr ?phone ?prefLabel WHERE {
       signal: controller.signal,
     });
     clearTimeout(t);
-    if (!res.ok) return [];
+    if (!res.ok) {
+      console.warn('[wikidata] HTTP', res.status, res.statusText);
+      return [];
+    }
     const data = await res.json();
     const bindings = data?.results?.bindings || [];
     const out = [];
@@ -107,8 +110,9 @@ SELECT ?item ?itemLabel ?addr ?phone ?prefLabel WHERE {
       });
     }
     return out;
-  } catch {
+  } catch (e) {
     clearTimeout(t);
+    console.warn('[wikidata] 请求失败:', e?.message || e);
     return [];
   }
 }

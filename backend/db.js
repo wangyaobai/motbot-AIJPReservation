@@ -132,6 +132,34 @@ export function ensureSchema() {
       updated_at TEXT DEFAULT (datetime('now'))
     );
   `);
+
+  // 兜底数据：refresh 前备份 recommendations_best，供后台管理
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS recommendations_fallback (
+      cache_key TEXT PRIMARY KEY,
+      country TEXT NOT NULL,
+      city_key TEXT NOT NULL,
+      city_zh TEXT,
+      restaurants_json TEXT NOT NULL,
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_recommendations_fallback_cc ON recommendations_fallback(country, city_key);
+  `);
+
+  // 爬取原始数据：供后台查看、补封面、人工确认后进入前端展示
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS recommendations_crawled (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      cache_key TEXT NOT NULL UNIQUE,
+      country TEXT NOT NULL,
+      city_key TEXT NOT NULL,
+      city_zh TEXT,
+      restaurants_json TEXT NOT NULL,
+      crawled_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_recommendations_crawled_cc ON recommendations_crawled(country, city_key);
+  `);
 }
 
 export function getDb() {

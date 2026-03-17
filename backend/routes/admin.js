@@ -2,7 +2,16 @@ import { Router } from 'express';
 import { getDb } from '../db.js';
 import { runRefineRecommendationImages } from '../services/refineRecommendationImages.js';
 import { getBestCachedMedia } from '../services/resolveRestaurantMedia.js';
-import { isNeedManualImageOnly, moveOkinawaFromOtherToOkinawa } from '../services/recommendationsStore.js';
+import {
+  isNeedManualImageOnly,
+  moveOkinawaFromOtherToOkinawa,
+  readFallbackRecommendations,
+  readCrawledRecommendations,
+  readBestRecommendations,
+  writeBestRecommendations,
+  backupToFallback,
+  getCityZh,
+} from '../services/recommendationsStore.js';
 import { clearRecommendationsCache } from './recommendations.js';
 import path from 'path';
 import fs from 'fs';
@@ -476,6 +485,157 @@ router.get('/media/duplicate-manual-covers', (req, res) => {
     });
 
     res.json({ ok: true, prefix, url, groups });
+  } catch (e) {
+    res.status(500).json({ ok: false, message: e?.message || 'Server error' });
+  }
+});
+
+// ========== 店铺管理：兜底 + 新爬取 ==========
+
+/** 备份当前 recommendations_best 到兜底表（首次或兜底为空时调用） */
+router.post('/shops/fallback/backup', (req, res) => {
+  try {
+    const count = backupToFallback();
+    res.json({ ok: true, count, message: `已备份 ${count} 个城市到兜底表` });
+  } catch (e) {
+    res.status(500).json({ ok: false, message: e?.message || 'Server error' });
+  }
+});
+
+/** 兜底店铺列表（按城市） */
+router.get('/shops/fallback', (req, res) => {
+  try {
+    const items = [];
+    for (const cityKey of JP_CITY_KEYS) {
+      const data = readFallbackRecommendations({ country: 'jp', cityKey });
+      const cityZh = cityZhFromKey(cityKey);
+      if (!data?.restaurants?.length) {
+        items.push({ cityKey, cityZh, restaurants: [], updatedAt: '' });
+        continue;
+      }
+      const list = data.restaurants.map((r) => {
+        const best = getBestCachedMedia({ cityHint: data.cityZh, name: r.name });
+        const manualUrl = best?.manual_image_url && best?.manual_enabled !== 0 ? best.manual_image_url : '';
+        return {
+          ...r,
+          image: manualUrl || r.image || FALLBACK_IMAGE,
+          manual_image_url: manualUrl,
+        };
+      });
+      items.push({ cityKey, cityZh, restaurants: list, updatedAt: data.updatedAt || '' });
+    }
+    res.json({ ok: true, items });
+  } catch (e) {
+    res.status(500).json({ ok: false, message: e?.message || 'Server error' });
+  }
+});
+
+/** 新爬取数据列表（按城市） */
+router.get('/shops/crawled', (req, res) => {
+  try {
+    const items = [];
+    for (const cityKey of JP_CITY_KEYS) {
+      const data = readCrawledRecommendations({ country: 'jp', cityKey });
+      const cityZh = cityZhFromKey(cityKey);
+      if (!data?.restaurants?.length) {
+        items.push({ cityKey, cityZh, restaurants: [], crawledAt: '', noCoverCount: 0 });
+        continue;
+      }
+      const noCoverCount = data.restaurants.filter((r) => !r.has_cover).length;
+      items.push({
+        cityKey,
+        cityZh,
+        restaurants: data.restaurants,
+        crawledAt: data.crawledAt || '',
+        noCoverCount,
+      });
+    }
+    res.json({ ok: true, items });
+  } catch (e) {
+    res.status(500).json({ ok: false, message: e?.message || 'Server error' });
+  }
+});
+
+/** 保存兜底店铺（封面、店铺信息） */
+router.post('/shops/fallback/save', (req, res) => {
+  try {
+    const { cityKey, name, image_url, address, phone } = req.body || {};
+    const n = normalizeRestaurantName(name);
+    const cityZh = cityZhFromKey(cityKey);
+    if (!n) return res.json({ ok: false, message: 'Missing restaurant name' });
+
+    const url = String(image_url || '').trim();
+    const validUrl = url && (url.startsWith('/') || /^https?:\/\//i.test(url));
+    if (validUrl) {
+      const cacheKey = `best:${cityZh}|${n}`;
+      const row = db.prepare('SELECT data_json FROM restaurant_media_best WHERE cache_key = ?').get(cacheKey);
+      const dataJson = row?.data_json || '{}';
+      db.prepare(
+        `INSERT INTO restaurant_media_best (cache_key, city_hint, restaurant_name, data_json, manual_image_url, manual_enabled, updated_at)
+         VALUES (?, ?, ?, ?, ?, 1, datetime('now'))
+         ON CONFLICT(cache_key) DO UPDATE SET
+           manual_image_url = excluded.manual_image_url,
+           manual_enabled = 1,
+           updated_at = datetime('now')`
+      ).run(cacheKey, cityZh, n, dataJson, url);
+    }
+
+    let data = readFallbackRecommendations({ country: 'jp', cityKey });
+    if (!data?.restaurants?.length) {
+      data = readBestRecommendations({ country: 'jp', cityKey });
+    }
+    if (data?.restaurants?.length) {
+      const list = data.restaurants.map((r) => {
+        const rn = normalizeRestaurantName(r.name);
+        if (rn !== n) return r;
+        return {
+          ...r,
+          ...(image_url && validUrl ? { image: url } : {}),
+          ...(address !== undefined ? { address: String(address || '').trim() } : {}),
+          ...(phone !== undefined ? { phone: String(phone || '').trim() } : {}),
+        };
+      });
+      const key = `reco:jp|${cityKey}`;
+      db.prepare(
+        `INSERT INTO recommendations_fallback (cache_key, country, city_key, city_zh, restaurants_json, updated_at)
+         VALUES (?, 'jp', ?, ?, ?, datetime('now'))
+         ON CONFLICT(cache_key) DO UPDATE SET
+           restaurants_json = excluded.restaurants_json,
+           updated_at = datetime('now')`
+      ).run(key, cityKey, cityZh, JSON.stringify(list));
+    }
+
+    clearRecommendationsCache();
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, message: e?.message || 'Server error' });
+  }
+});
+
+/** 确认爬取数据进入前端展示（写入 recommendations_best） */
+router.post('/shops/crawled/confirm', (req, res) => {
+  try {
+    const { cityKey, restaurantIds } = req.body || {};
+    if (!cityKey || !JP_CITY_KEYS.includes(cityKey)) {
+      return res.json({ ok: false, message: 'Invalid cityKey' });
+    }
+    const data = readCrawledRecommendations({ country: 'jp', cityKey });
+    if (!data?.restaurants?.length) {
+      return res.json({ ok: false, message: '该城市暂无爬取数据' });
+    }
+    const cityZh = getCityZh(cityKey);
+    let list = data.restaurants;
+    if (Array.isArray(restaurantIds) && restaurantIds.length > 0) {
+      const idSet = new Set(restaurantIds);
+      list = list.filter((r) => idSet.has(r.id));
+    }
+    const final = list.slice(0, 10);
+    if (final.length === 0) {
+      return res.json({ ok: false, message: '请至少选择 1 家餐厅' });
+    }
+    writeBestRecommendations({ country: 'jp', cityKey, cityZh, restaurants: final });
+    clearRecommendationsCache();
+    res.json({ ok: true, count: final.length, message: `已确认 ${final.length} 家进入前端展示` });
   } catch (e) {
     res.status(500).json({ ok: false, message: e?.message || 'Server error' });
   }

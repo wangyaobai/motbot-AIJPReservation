@@ -546,6 +546,11 @@ a.link-btn:hover {
 .admin-tabs button.active { color: #e85d04; font-weight: 600; background: #fff3e6; }
 
 .admin-media-cover { padding: 0; }
+.admin-shops { padding: 0; }
+.admin-shops-subtabs { display: flex; gap: 8px; margin-bottom: 16px; }
+.admin-shops-subtabs button { padding: 8px 16px; border: 1px solid #ddd; background: #fff; border-radius: 8px; cursor: pointer; font-size: 0.9rem; }
+.admin-shops-subtabs button.active { background: #e85d04; color: #fff; border-color: #e85d04; }
+.admin-shops-desc { margin: 0 0 12px; color: #666; font-size: 0.9rem; }
 .admin-media-loading, .admin-media-empty { color: #666; margin: 0 0 16px; }
 .admin-media-summary { margin: 0 0 12px; color: #1a1a1a; font-size: 0.95rem; }
 .admin-media-actions { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }

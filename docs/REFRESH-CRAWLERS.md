@@ -9,6 +9,14 @@
 - **补图**：沿用 Tabelog/Wikidata/Yelp，拉到后**本地化保存**到服务器
 - **秒开**：`recommendations_best` + `translate_cache` 仍为缓存，首页加载不受影响
 
+### 数据流说明
+
+- **默认**：爬取数据写入 `recommendations_crawled`，需后台「店铺管理」人工确认后进入前端
+- **--auto-merge**：自动合并到 `recommendations_best`（原逻辑，适合 crontab 自动更新）
+- **--replace**：与 `--auto-merge` 联用时，完全用爬取数据覆盖（不保留旧数据）
+
+每次 refresh 前会自动备份 `recommendations_best` 到 `recommendations_fallback`（兜底表）。
+
 ## 城市范围
 
 | 类型 | 城市 | 数据来源 |
@@ -29,15 +37,23 @@ node scripts/refresh-from-crawlers.js --city=tokyo
 
 # 试跑（不写库）
 node scripts/refresh-from-crawlers.js --dry-run
+
+# 自动合并到前端（适合 crontab）
+node scripts/refresh-from-crawlers.js --auto-merge
+
+# 完全覆盖 + 自动合并
+node scripts/refresh-from-crawlers.js --auto-merge --replace
 ```
 
 ## 定时任务（crontab）
 
-每周日凌晨 3 点执行：
+每周日凌晨 3 点执行。如需自动合并到前端，加 `--auto-merge`：
 
 ```bash
-0 3 * * 0 cd ~/motbot-AIJPReservation/backend && node scripts/refresh-from-crawlers.js >> ~/refresh-crawlers.log 2>&1
+0 3 * * 0 cd ~/motbot-AIJPReservation/backend && node scripts/refresh-from-crawlers.js --auto-merge >> ~/refresh-crawlers.log 2>&1
 ```
+
+不加 `--auto-merge` 时，爬取数据仅入库，需后台「店铺管理」确认后进入前端。
 
 ## 数据源
 

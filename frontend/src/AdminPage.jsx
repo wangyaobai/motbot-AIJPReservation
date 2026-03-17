@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AdminQuery } from './AdminQuery';
 import { AdminMediaCover } from './AdminMediaCover';
+import { AdminShops } from './AdminShops';
 import './App.css';
 
 const API = import.meta.env.VITE_API_BASE || '/api';
@@ -30,10 +31,18 @@ export default function AdminPage() {
         >
           封面图管理
         </button>
+        <button
+          type="button"
+          className={tab === 'shops' ? 'active' : ''}
+          onClick={() => setTab('shops')}
+        >
+          店铺管理
+        </button>
       </nav>
       <main className="admin-main">
         {tab === 'orders' && <AdminQuery apiBase={API} />}
         {tab === 'media' && <AdminMediaCover apiBase={API} />}
+        {tab === 'shops' && <AdminShops apiBase={API} />}
       </main>
     </div>
   );
