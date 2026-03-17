@@ -36,7 +36,8 @@ app.use('/api/tts', express.static(path.join(__dirname, 'public', 'tts')));
 // 后台上传的封面图（存服务器本地，避免外链失效）
 const manualCoversDir = path.join(__dirname, 'public', 'manual-covers');
 if (!fs.existsSync(manualCoversDir)) fs.mkdirSync(manualCoversDir, { recursive: true });
-app.use('/api/manual-covers', express.static(manualCoversDir));
+// 给封面图加长缓存：中英文切换/刷新时可直接命中浏览器缓存，显著提升加载速度
+app.use('/api/manual-covers', express.static(manualCoversDir, { maxAge: '30d', immutable: true }));
 
 // 用户认证与用户端订单（需登录）
 app.use('/api/user', userRouter);
