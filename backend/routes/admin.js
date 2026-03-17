@@ -8,7 +8,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
-import { randomBytes } from 'crypto';
+import { randomBytes, createHash } from 'crypto';
 import { importManualCoversFromJsonFile } from '../services/manualCovers.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -313,7 +313,11 @@ async function downloadAndReplaceCover({ cache_key, manual_image_url } = {}) {
 
   const contentType = resp.headers.get('content-type') || '';
   const ext = contentType.includes('png') ? '.png' : contentType.includes('webp') ? '.webp' : '.jpg';
-  const filename = `${String(cache_key || '').replace(/[^a-zA-Z0-9_-]/g, '_')}${ext}`;
+  // 注意：cache_key 里包含中文/日文时，简单 replace 会导致大量餐厅同名（全变成下划线），从而互相覆盖。
+  // 用 hash 作为文件名，保证稳定且不会冲突。
+  const key = String(cache_key || '');
+  const digest = createHash('sha1').update(key).digest('hex').slice(0, 16);
+  const filename = `best-${digest}${ext}`;
   const filepath = path.join(manualCoversDir, filename);
   const buf = Buffer.from(await resp.arrayBuffer());
   fs.writeFileSync(filepath, buf);
