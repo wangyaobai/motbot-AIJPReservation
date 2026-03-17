@@ -326,7 +326,7 @@ export function HomePage() {
   const [city, setCity] = useState('tokyo');
   const [loading, setLoading] = useState(false);
   const [remote, setRemote] = useState({});
-  const { translateToEn } = useTranslate(apiBase);
+  const { translateToEn, translateBatchToEn } = useTranslate(apiBase);
   const [translated, setTranslated] = useState({});
   const [failedImageIds, setFailedImageIds] = useState(() => new Set());
 
@@ -375,27 +375,58 @@ export function HomePage() {
 
   // 英文模式：用中文数据直接调翻译接口，翻译结果再展示（城市、地址、亮点、店名）
   useEffect(() => {
-    if (!isEn || !filteredRestaurants.length || !translateToEn) return;
-    displayRestaurants.forEach((r) => {
-      const id = r.id;
-      const cityZh = (r.city || '').trim();
-      if (cityZh) {
-        translateToEn(cityZh).then((en) => { if (en && !hasCJK(en)) setTranslated((prev) => ({ ...prev, [`${id}-city`]: en })); });
-      }
-      const addressZh = (r.address || '').trim();
-      if (addressZh) {
-        translateToEn(addressZh).then((en) => { if (en && !hasCJK(en)) setTranslated((prev) => ({ ...prev, [`${id}-address`]: en })); });
-      }
-      const featureZh = (r.feature || '').trim();
-      if (featureZh) {
-        translateToEn(featureZh).then((en) => { if (en && !hasCJK(en)) setTranslated((prev) => ({ ...prev, [`${id}-feature`]: en })); });
-      }
-      const nameRaw = r.name_en || r.nameEn || (r.name && r.name.match(/\(([^)]+)\)/)?.[1]) || r.name;
-      if (nameRaw && hasCJK(nameRaw)) {
-        translateToEn(nameRaw).then((en) => { if (en && !hasCJK(en)) setTranslated((prev) => ({ ...prev, [`${id}-name`]: en })); });
-      }
-    });
-  }, [isEn, displayRestaurants, translateToEn]);
+    if (!isEn || !filteredRestaurants.length) return;
+    if (!translateBatchToEn && !translateToEn) return;
+
+    let cancelled = false;
+    (async () => {
+      const jobs = [];
+      const keys = [];
+
+      displayRestaurants.forEach((r) => {
+        const id = r.id;
+        const cityZh = (r.city || '').trim();
+        if (cityZh) { keys.push(`${id}-city`); jobs.push(cityZh); }
+        const addressZh = (r.address || '').trim();
+        if (addressZh) { keys.push(`${id}-address`); jobs.push(addressZh); }
+        const featureZh = (r.feature || '').trim();
+        if (featureZh) { keys.push(`${id}-feature`); jobs.push(featureZh); }
+        const nameRaw = r.name_en || r.nameEn || (r.name && r.name.match(/\(([^)]+)\)/)?.[1]) || r.name;
+        if (nameRaw && hasCJK(nameRaw)) { keys.push(`${id}-name`); jobs.push(nameRaw); }
+      });
+
+      if (jobs.length === 0) return;
+
+      // 去重：避免同一段文本翻译多次
+      const uniq = [];
+      const uniqKey = [];
+      const seen = new Map(); // text -> firstIndex
+      jobs.forEach((t, idx) => {
+        const prev = seen.get(t);
+        if (typeof prev === 'number') return;
+        seen.set(t, idx);
+        uniq.push(t);
+        uniqKey.push(idx);
+      });
+
+      const translatedArr = translateBatchToEn
+        ? await translateBatchToEn(uniq)
+        : await Promise.all(uniq.map((t) => translateToEn(t)));
+
+      if (cancelled) return;
+      setTranslated((prev) => {
+        const next = { ...prev };
+        translatedArr.forEach((en, j) => {
+          const originalIdx = uniqKey[j];
+          const k = keys[originalIdx];
+          if (k && en && !hasCJK(en)) next[k] = en;
+        });
+        return next;
+      });
+    })();
+
+    return () => { cancelled = true; };
+  }, [isEn, displayRestaurants, filteredRestaurants.length, translateBatchToEn, translateToEn]);
 
   return (
     <div className="app">

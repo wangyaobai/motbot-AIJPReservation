@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { translateBatch } from '../services/translateToEn.js';
 
 const router = Router();
 const MAX_LENGTH = 2000;
@@ -91,6 +92,30 @@ router.post('/', async (req, res) => {
     res.json({ ok: false, message: 'Translation failed' });
   } catch (e) {
     res.status(500).json({ ok: false, message: e?.message || 'Server error' });
+  }
+});
+
+// 批量翻译：减少英文模式下的请求次数/外部调用次数
+router.post('/batch', async (req, res) => {
+  try {
+    const { texts } = req.body || {};
+    if (!Array.isArray(texts)) {
+      return res.json({ ok: false, message: 'Missing texts' });
+    }
+    if (!process.env.DEEPSEEK_API_KEY) {
+      return res.json({ ok: false, message: 'Translation not configured (DEEPSEEK_API_KEY)' });
+    }
+    if (texts.length > 200) {
+      return res.json({ ok: false, message: 'Too many texts' });
+    }
+    const norm = texts.map((t) => (typeof t === 'string' ? t.trim() : ''));
+    for (const t of norm) {
+      if (t && t.length > MAX_LENGTH) return res.json({ ok: false, message: 'Text too long' });
+    }
+    const translated = await translateBatch(norm);
+    return res.json({ ok: true, translated });
+  } catch (e) {
+    return res.status(500).json({ ok: false, message: e?.message || 'Server error' });
   }
 });
 
