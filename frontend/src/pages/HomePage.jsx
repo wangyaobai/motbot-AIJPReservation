@@ -374,8 +374,10 @@ export function HomePage() {
   );
 
   // 英文模式：用中文数据直接调翻译接口，翻译结果再展示（城市、地址、亮点、店名）
+  // 若 API 已返回 _en 字段（后端预翻译），则跳过，避免重复请求
   useEffect(() => {
     if (!isEn || !filteredRestaurants.length) return;
+    if (displayRestaurants.some((r) => r.name_en || r.city_en)) return;
     if (!translateBatchToEn && !translateToEn) return;
 
     let cancelled = false;
@@ -464,7 +466,7 @@ export function HomePage() {
           </div>
         </div>
 
-        <EffectLoader city={city} apiBase={apiBase} setRemote={setRemote} setLoading={setLoading} />
+        <EffectLoader city={city} apiBase={apiBase} isEn={isEn} setRemote={setRemote} setLoading={setLoading} />
 
         {loading && (
           <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: '0 0 8px 2px' }}>
@@ -480,14 +482,14 @@ export function HomePage() {
               <div style={{ display: 'flex', gap: 10 }}>
                 <RestaurantThumb
                   cardKey={key}
-                  name={isEn ? (translated[`${r.id}-name`] ?? enName(r)) : r.name}
+                  name={isEn ? (r.name_en ?? translated[`${r.id}-name`] ?? enName(r)) : r.name}
                   image={r.image}
                   onImageError={(k) => setFailedImageIds((prev) => new Set(prev).add(k))}
                 />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <h3 style={{ margin: '0 0 4px', fontSize: '1rem' }}>{isEn ? (translated[`${r.id}-name`] ?? enName(r)) : r.name}</h3>
+                  <h3 style={{ margin: '0 0 4px', fontSize: '1rem' }}>{isEn ? (r.name_en ?? translated[`${r.id}-name`] ?? enName(r)) : r.name}</h3>
                   <p style={{ margin: '0 0 6px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                    {isEn ? (translated[`${r.id}-city`] || '—') : r.city}
+                    {isEn ? (r.city_en ?? translated[`${r.id}-city`] || '—') : r.city}
                   </p>
                   <p style={{ margin: '0 0 4px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
                     {isEn ? 'Phone: ' : '电话：'}
@@ -495,11 +497,11 @@ export function HomePage() {
                   </p>
                   <p style={{ margin: '0 0 4px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                     {isEn ? 'Address: ' : '地址：'}
-                    {isEn ? (translated[`${r.id}-address`] || '—') : r.address}
+                    {isEn ? (r.address_en ?? translated[`${r.id}-address`] || '—') : r.address}
                   </p>
                   <p style={{ margin: '4px 0 8px', fontSize: '0.8rem', color: 'var(--text)' }}>
                     {isEn ? 'Highlights: ' : '餐厅特色：'}
-                    {isEn ? (translated[`${r.id}-feature`] || '—') : r.feature}
+                    {isEn ? (r.feature_en ?? translated[`${r.id}-feature`] || '—') : r.feature}
                   </p>
                   <button
                     type="button"
@@ -519,13 +521,13 @@ export function HomePage() {
   );
 }
 
-function EffectLoader({ city, apiBase, setRemote, setLoading }) {
+function EffectLoader({ city, apiBase, isEn, setRemote, setLoading }) {
   useEffect(() => {
     let cancelled = false;
     setRemote({ [city]: undefined });
     const fetchRecommendations = async () => {
       const cached = loadCachedRecommendations(city);
-      if (!cancelled && cached && cached.length > 0) {
+      if (!cancelled && cached && cached.length > 0 && !isEn) {
         const byCity = filterListByCity(cached, city);
         const onlyWithCover = byCity.filter((r) => r && !isFallbackImage(r?.image));
         setRemote({ [city]: onlyWithCover });
@@ -533,13 +535,14 @@ function EffectLoader({ city, apiBase, setRemote, setLoading }) {
 
       setLoading(true);
       try {
-        const url = `${apiBase}/recommendations?country=jp&city=${encodeURIComponent(city)}`;
+        const lang = isEn ? 'en' : 'zh';
+        const url = `${apiBase}/recommendations?country=jp&city=${encodeURIComponent(city)}&lang=${lang}`;
         const resp = await fetch(url, { cache: 'no-store' });
         const data = await resp.json().catch(() => ({}));
         if (!cancelled && data.ok && Array.isArray(data.restaurants) && data.restaurants.length > 0) {
           const byCity = filterListByCity(data.restaurants, city);
           const onlyWithCover = byCity.filter((r) => r && !isFallbackImage(r?.image));
-          saveCachedRecommendations(city, onlyWithCover);
+          if (!isEn) saveCachedRecommendations(city, onlyWithCover);
           setRemote({ [city]: onlyWithCover.length ? onlyWithCover : undefined });
         }
         // API 失败或返回空时不再把 remote 置空，保留 undefined 以使用前端兜底示例列表
@@ -551,7 +554,7 @@ function EffectLoader({ city, apiBase, setRemote, setLoading }) {
     };
     fetchRecommendations();
     return () => { cancelled = true; };
-  }, [city, apiBase, setRemote, setLoading]);
+  }, [city, apiBase, isEn, setRemote, setLoading]);
   return null;
 }
 
@@ -592,6 +595,7 @@ function RestaurantThumb({ cardKey, name, image, onImageError }) {
           <img
             src={src}
             alt={name}
+            loading="lazy"
             referrerPolicy="no-referrer"
             onError={handleError}
             style={{ width: 96, height: 96, objectFit: 'cover', display: 'block' }}

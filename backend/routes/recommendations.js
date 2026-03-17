@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { getDb } from '../db.js';
 import { clearTranslateCache } from '../services/translateToEn.js';
+import { batchTranslateWithPersistentCache } from '../services/translateWithPersistentCache.js';
 import { resolveRestaurantImage, clearRestaurantImageCache } from '../services/resolveRestaurantImage.js';
 import { resolveRestaurantMediaBatch, getBestCachedMedia, clearRestaurantMediaCache } from '../services/resolveRestaurantMedia.js';
 import {
@@ -27,6 +28,52 @@ export function clearRecommendationsCache() {
   clearTranslateCache();
   clearRestaurantImageCache();
   clearRestaurantMediaCache();
+}
+
+function hasCJK(s) {
+  return typeof s === 'string' && /[\u4e00-\u9fff\u3040-\u30ff]/.test(s);
+}
+
+/** 为餐厅列表附加英文翻译字段，优先用 SQLite 缓存，实现英文模式秒开 */
+async function attachEnFields(restaurants) {
+  if (!Array.isArray(restaurants) || restaurants.length === 0) return restaurants;
+  const names = [];
+  const cities = [];
+  const addresses = [];
+  const features = [];
+  const seen = { name: new Map(), city: new Map(), address: new Map(), feature: new Map() };
+  for (const r of restaurants) {
+    for (const [key, arr, map] of [
+      ['name', names, seen.name],
+      ['city', cities, seen.city],
+      ['address', addresses, seen.address],
+      ['feature', features, seen.feature],
+    ]) {
+      const t = (r[key] || '').trim();
+      if (t && hasCJK(t) && !map.has(t)) {
+        map.set(t, arr.length);
+        arr.push(t);
+      }
+    }
+  }
+  const all = [...names, ...cities, ...addresses, ...features];
+  if (all.length === 0) return restaurants;
+  const translated = await batchTranslateWithPersistentCache(all);
+  const nameMap = { name: new Map(), city: new Map(), address: new Map(), feature: new Map() };
+  let idx = 0;
+  for (const [arr, map] of [[names, nameMap.name], [cities, nameMap.city], [addresses, nameMap.address], [features, nameMap.feature]]) {
+    for (const t of arr) {
+      const v = translated[idx++];
+      if (v && !hasCJK(v)) map.set(t, v);
+    }
+  }
+  return restaurants.map((r) => ({
+    ...r,
+    name_en: nameMap.name.get((r.name || '').trim()) || r.name_en || (r.name && r.name.match(/\(([^)]+)\)/)?.[1]),
+    city_en: nameMap.city.get((r.city || '').trim()) || r.city_en,
+    address_en: nameMap.address.get((r.address || '').trim()) || r.address_en,
+    feature_en: nameMap.feature.get((r.feature || '').trim()) || r.feature_en,
+  }));
 }
 
 function stripFencesAndExtractArrayText(raw) {
@@ -115,6 +162,8 @@ function parseRestaurantsBestEffort(rawContent) {
 router.get('/', async (req, res) => {
   const country = (req.query.country || 'jp').toString().toLowerCase();
   const city = (req.query.city || 'tokyo').toString().toLowerCase();
+  const lang = (req.query.lang || 'zh').toString().toLowerCase();
+  const wantEn = lang === 'en' || lang === 'en-us' || lang === 'en-gb';
   const key = `${country}|${city}`;
   const clearCache = req.query.clear_cache === '1' || req.query.clear_cache === 'true';
   // 默认每次访问都后台预热/更新；显式 warm_media=0 才关闭
@@ -123,6 +172,15 @@ router.get('/', async (req, res) => {
   const mediaBudgetMs = Math.max(0, Math.min(8000, parseInt(req.query.media_budget_ms, 10) || 6500));
 
   const cityZh = CITY_LABEL_MAP[city] || city;
+
+  const sendRestaurants = async (list, opts = {}) => {
+    const { fromBestDb = false, fromCache = true } = opts;
+    let out = filterToListWithCover(list);
+    if (wantEn && out.length > 0) {
+      out = await attachEnFields(out);
+    }
+    res.json({ ok: true, fromCache, fromBestDb, restaurants: out });
+  };
 
   if (clearCache) {
     clearRecommendationsCache();
@@ -136,7 +194,7 @@ router.get('/', async (req, res) => {
       snapshot = filterListByCityKey(snapshot, city);
       snapshot = excludeNeedManualImageOnly(snapshot);
       cache.set(key, { restaurants: snapshot, fetchedAt: Date.now() });
-      return res.json({ ok: true, fromCache: true, fromBestDb: true, restaurants: filterToListWithCover(snapshot) });
+      return sendRestaurants(snapshot, { fromBestDb: true });
     }
   }
 
@@ -192,7 +250,7 @@ router.get('/', async (req, res) => {
         }
       });
     }
-    return res.json({ ok: true, fromCache: true, restaurants: filterToListWithCover(snapshot) });
+    return sendRestaurants(snapshot);
   }
 
   const apiKey = process.env.DEEPSEEK_API_KEY;
@@ -331,7 +389,7 @@ router.get('/', async (req, res) => {
     cache.set(key, { restaurants: listForResponse, fetchedAt: Date.now() });
     const toStore = filterToListWithCover(listForResponse).slice(0, 10);
     writeBestRecommendations({ country, cityKey: city, cityZh, restaurants: toStore });
-    res.json({ ok: true, restaurants: filterToListWithCover(listForResponse) });
+    return sendRestaurants(listForResponse, { fromCache: false });
 
     // 可选：后台预热（不阻塞响应）。用于把仍是占位图的餐厅继续补齐并持久化 best-cache
     if (warmMedia) {
