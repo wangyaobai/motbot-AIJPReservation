@@ -280,50 +280,98 @@ router.post('/media/upload-cover', (req, res) => {
   });
 });
 
-// 将现有外链封面全部下载到服务器并改为本地链接（需 x-admin-token）
-router.post('/media/localize-covers', async (req, res) => {
-  if (!requireAdminToken(req, res)) return;
+let localizeJob = {
+  running: false,
+  total: 0,
+  localized: 0,
+  failed: 0,
+  startedAt: null,
+  finishedAt: null,
+  lastError: '',
+};
+
+function getLocalizeStatus() {
+  return { ok: true, ...localizeJob };
+}
+
+async function downloadAndReplaceCover({ cache_key, manual_image_url } = {}) {
+  const src = String(manual_image_url || '').trim();
+  if (!src || !src.startsWith('http')) throw new Error('invalid url');
+
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), 10000);
+  let resp;
+  try {
+    resp = await fetch(src, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; RestaurantBookingBot/1.0)' },
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(t);
+  }
+  if (!resp?.ok) throw new Error(`fetch failed: ${resp?.status || 0}`);
+
+  const contentType = resp.headers.get('content-type') || '';
+  const ext = contentType.includes('png') ? '.png' : contentType.includes('webp') ? '.webp' : '.jpg';
+  const filename = `${String(cache_key || '').replace(/[^a-zA-Z0-9_-]/g, '_')}${ext}`;
+  const filepath = path.join(manualCoversDir, filename);
+  const buf = Buffer.from(await resp.arrayBuffer());
+  fs.writeFileSync(filepath, buf);
+  const localUrl = `/api/manual-covers/${filename}`;
+  db.prepare(
+    'UPDATE restaurant_media_best SET manual_image_url = ?, updated_at = datetime(\'now\') WHERE cache_key = ?'
+  ).run(localUrl, cache_key);
+  return localUrl;
+}
+
+async function runLocalizeJob() {
+  localizeJob = {
+    running: true,
+    total: 0,
+    localized: 0,
+    failed: 0,
+    startedAt: new Date().toISOString(),
+    finishedAt: null,
+    lastError: '',
+  };
   try {
     const rows = db.prepare(
-      `SELECT cache_key, city_hint, restaurant_name, manual_image_url FROM restaurant_media_best
+      `SELECT cache_key, manual_image_url FROM restaurant_media_best
        WHERE manual_image_url IS NOT NULL AND TRIM(manual_image_url) != '' AND manual_image_url LIKE 'http%'`
     ).all();
+    localizeJob.total = rows.length;
     if (!fs.existsSync(manualCoversDir)) fs.mkdirSync(manualCoversDir, { recursive: true });
-    let done = 0;
-    let failed = 0;
-    const updateStmt = db.prepare(
-      'UPDATE restaurant_media_best SET manual_image_url = ?, updated_at = datetime(\'now\') WHERE cache_key = ?'
-    );
-    for (const row of rows) {
-      try {
-        const controller = new AbortController();
-        const t = setTimeout(() => controller.abort(), 10000);
-        const resp = await fetch(row.manual_image_url, {
-          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; RestaurantBookingBot/1.0)' },
-          signal: controller.signal,
-        });
-        clearTimeout(t);
-        if (!resp.ok) {
-          failed += 1;
-          continue;
-        }
-        const contentType = resp.headers.get('content-type') || '';
-        const ext = contentType.includes('png') ? '.png' : contentType.includes('webp') ? '.webp' : '.jpg';
-        const filename = `${row.cache_key.replace(/[^a-zA-Z0-9_-]/g, '_')}${ext}`;
-        const filepath = path.join(manualCoversDir, filename);
-        const buf = Buffer.from(await resp.arrayBuffer());
-        fs.writeFileSync(filepath, buf);
-        const localUrl = `/api/manual-covers/${filename}`;
-        updateStmt.run(localUrl, row.cache_key);
-        done += 1;
-      } catch {
-        failed += 1;
+
+    const concurrency = 4;
+    for (let i = 0; i < rows.length; i += concurrency) {
+      const chunk = rows.slice(i, i + concurrency);
+      const results = await Promise.allSettled(chunk.map((r) => downloadAndReplaceCover(r)));
+      for (const r of results) {
+        if (r.status === 'fulfilled') localizeJob.localized += 1;
+        else localizeJob.failed += 1;
       }
     }
-    res.json({ ok: true, localized: done, failed, total: rows.length });
   } catch (e) {
-    res.status(500).json({ ok: false, message: e?.message || 'Server error' });
+    localizeJob.lastError = e?.message || String(e);
+  } finally {
+    localizeJob.running = false;
+    localizeJob.finishedAt = new Date().toISOString();
   }
+}
+
+// 将现有外链封面下载到服务器并改为本地链接（后台任务，避免超时；需 x-admin-token）
+router.post('/media/localize-covers', (req, res) => {
+  if (!requireAdminToken(req, res)) return;
+  if (localizeJob.running) return res.json(getLocalizeStatus());
+  res.json({ ok: true, started: true });
+  setImmediate(() => {
+    runLocalizeJob().catch(() => {});
+  });
+});
+
+router.get('/media/localize-covers/status', (req, res) => {
+  if (!requireAdminToken(req, res)) return;
+  res.json(getLocalizeStatus());
 });
 
 // 手动设置餐厅封面图（写入 SQLite，长期生效）

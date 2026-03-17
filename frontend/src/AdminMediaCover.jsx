@@ -122,10 +122,27 @@ export function AdminMediaCover({ apiBase = API }) {
         method: 'POST',
         headers: { 'x-admin-token': token },
       });
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.message || '本地化失败');
-      setLocalizeMsg(`已将 ${data.localized ?? 0} 张外链封面下载到服务器并改为本地链接；${data.failed ?? 0} 张失败。`);
-      fetchList();
+      const data = await res.json().catch(() => ({}));
+      if (!data.ok) throw new Error(data.message || '本地化失败（可能超时或服务异常）');
+      setLocalizeMsg('已开始在后台下载外链封面到服务器，请稍候…');
+
+      // 轮询进度，避免一次性请求超时导致 HTML 返回
+      const poll = async () => {
+        const st = await fetch(`${apiBase}/admin/media/localize-covers/status`, {
+          headers: { 'x-admin-token': token },
+        }).then((r) => r.json()).catch(() => null);
+        if (!st?.ok) return;
+        const msg = st.running
+          ? `本地化中… ${st.localized ?? 0}/${st.total ?? 0}（失败 ${st.failed ?? 0}）`
+          : `本地化完成：已保存 ${st.localized ?? 0}/${st.total ?? 0}（失败 ${st.failed ?? 0}）${st.lastError ? `；错误：${st.lastError}` : ''}`;
+        setLocalizeMsg(msg);
+        if (st.running) {
+          setTimeout(poll, 2000);
+        } else {
+          fetchList();
+        }
+      };
+      setTimeout(poll, 800);
     } catch (e) {
       setLocalizeMsg(e.message || '本地化失败');
     } finally {
