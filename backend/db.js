@@ -123,6 +123,15 @@ export function ensureSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_recommendations_best_cc ON recommendations_best(country, city_key);
   `);
+
+  // 翻译结果持久缓存：避免英文模式重复调用外部翻译服务（重启也秒回）
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS translate_cache (
+      cache_key TEXT PRIMARY KEY,
+      translated TEXT NOT NULL,
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
 }
 
 export function getDb() {

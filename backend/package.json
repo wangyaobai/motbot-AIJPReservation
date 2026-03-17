@@ -26,6 +26,7 @@
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.1.1",
     "openai": "^4.73.0",
+    "sharp": "^0.33.5",
     "tencentcloud-sdk-nodejs": "^4.1.186",
     "twilio": "^5.3.4"
   }

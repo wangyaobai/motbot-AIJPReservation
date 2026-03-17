@@ -1,10 +1,34 @@
 import { Router } from 'express';
 import { translateBatch } from '../services/translateToEn.js';
+import { getDb } from '../db.js';
 
 const router = Router();
 const MAX_LENGTH = 2000;
 const cache = new Map();
 const CACHE_TTL_MS = 10 * 60 * 1000;
+const db = getDb();
+
+function readDbCache(key) {
+  try {
+    const row = db.prepare('SELECT translated FROM translate_cache WHERE cache_key = ?').get(key);
+    const v = row?.translated ? String(row.translated).trim() : '';
+    return v || null;
+  } catch {
+    return null;
+  }
+}
+
+function writeDbCache(key, val) {
+  try {
+    db.prepare(
+      `INSERT INTO translate_cache (cache_key, translated, updated_at)
+       VALUES (?, ?, datetime('now'))
+       ON CONFLICT(cache_key) DO UPDATE SET translated = excluded.translated, updated_at = datetime('now')`
+    ).run(key, val);
+  } catch {
+    // ignore
+  }
+}
 
 function hasCJK(s) {
   return typeof s === 'string' && /[\u4e00-\u9fff\u3040-\u30ff]/.test(s);
@@ -84,9 +108,15 @@ router.post('/', async (req, res) => {
     if (cached && Date.now() < cached.exp) {
       return res.json({ ok: true, translated: cached.val });
     }
+    const dbCached = readDbCache(key);
+    if (dbCached && !hasCJK(dbCached)) {
+      cache.set(key, { val: dbCached, exp: Date.now() + CACHE_TTL_MS });
+      return res.json({ ok: true, translated: dbCached });
+    }
     const translated = await callDeepSeekToEn(raw);
     if (translated) {
       cache.set(key, { val: translated, exp: Date.now() + CACHE_TTL_MS });
+      writeDbCache(key, translated);
       return res.json({ ok: true, translated });
     }
     res.json({ ok: false, message: 'Translation failed' });
@@ -112,8 +142,42 @@ router.post('/batch', async (req, res) => {
     for (const t of norm) {
       if (t && t.length > MAX_LENGTH) return res.json({ ok: false, message: 'Text too long' });
     }
-    const translated = await translateBatch(norm);
-    return res.json({ ok: true, translated });
+    // 先用 DB / 内存缓存命中，剩下的再批量走外部翻译
+    const keys = norm.map((t) => `en:${t}`);
+    const out = norm.slice();
+    const toAsk = [];
+    const idxMap = [];
+    norm.forEach((t, i) => {
+      if (!t || !hasCJK(t)) return;
+      const key = keys[i];
+      const mem = cache.get(key);
+      if (mem && Date.now() < mem.exp && mem.val && !hasCJK(mem.val)) {
+        out[i] = mem.val;
+        return;
+      }
+      const dbVal = readDbCache(key);
+      if (dbVal && !hasCJK(dbVal)) {
+        out[i] = dbVal;
+        cache.set(key, { val: dbVal, exp: Date.now() + CACHE_TTL_MS });
+        return;
+      }
+      toAsk.push(t);
+      idxMap.push(i);
+    });
+    if (toAsk.length === 0) return res.json({ ok: true, translated: out });
+
+    const asked = await translateBatch(toAsk);
+    asked.forEach((v, j) => {
+      const i = idxMap[j];
+      const key = keys[i];
+      const val = typeof v === 'string' ? v.trim() : '';
+      if (val && !hasCJK(val)) {
+        out[i] = val;
+        cache.set(key, { val, exp: Date.now() + CACHE_TTL_MS });
+        writeDbCache(key, val);
+      }
+    });
+    return res.json({ ok: true, translated: out });
   } catch (e) {
     return res.status(500).json({ ok: false, message: e?.message || 'Server error' });
   }

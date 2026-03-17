@@ -10,6 +10,7 @@ import { fileURLToPath } from 'url';
 import multer from 'multer';
 import { randomBytes, createHash } from 'crypto';
 import { importManualCoversFromJsonFile } from '../services/manualCovers.js';
+import sharp from 'sharp';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const manualCoversDir = path.join(__dirname, '..', 'public', 'manual-covers');
@@ -22,11 +23,12 @@ const storage = multer.diskStorage({
     cb(null, manualCoversDir);
   },
   filename: (req, file, cb) => {
+    // 先落盘临时文件，后续统一压缩转成 webp
     const ext = (file.mimetype === 'image/png' ? '.png' : file.mimetype === 'image/webp' ? '.webp' : '.jpg');
-    cb(null, `${Date.now()}-${randomBytes(4).toString('hex')}${ext}`);
+    cb(null, `upload-${Date.now()}-${randomBytes(4).toString('hex')}${ext}`);
   },
 });
-const uploadCover = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } }).single('cover');
+const uploadCover = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } }).single('cover');
 const db = getDb();
 
 let refineInFlight = false;
@@ -285,14 +287,27 @@ router.get('/restaurants-without-cover', (req, res) => {
 
 // 上传封面图到服务器本地，返回 /api/manual-covers/xxx 供保存为 manual_image_url
 router.post('/media/upload-cover', (req, res) => {
-  uploadCover(req, res, (err) => {
+  uploadCover(req, res, async (err) => {
     if (err) {
       return res.status(400).json({ ok: false, message: err.message || '上传失败' });
     }
     if (!req.file || !req.file.filename) {
       return res.status(400).json({ ok: false, message: '未选择文件' });
     }
-    res.json({ ok: true, url: `/api/manual-covers/${req.file.filename}` });
+    try {
+      const inPath = req.file.path;
+      const outName = `cover-${Date.now()}-${randomBytes(6).toString('hex')}.webp`;
+      const outPath = path.join(manualCoversDir, outName);
+      await sharp(inPath)
+        .rotate()
+        .resize({ width: 900, withoutEnlargement: true })
+        .webp({ quality: 78 })
+        .toFile(outPath);
+      try { fs.unlinkSync(inPath); } catch {}
+      res.json({ ok: true, url: `/api/manual-covers/${outName}` });
+    } catch (e) {
+      return res.status(500).json({ ok: false, message: e?.message || '图片处理失败' });
+    }
   });
 });
 
@@ -327,16 +342,24 @@ async function downloadAndReplaceCover({ cache_key, manual_image_url } = {}) {
   }
   if (!resp?.ok) throw new Error(`fetch failed: ${resp?.status || 0}`);
 
-  const contentType = resp.headers.get('content-type') || '';
-  const ext = contentType.includes('png') ? '.png' : contentType.includes('webp') ? '.webp' : '.jpg';
   // 注意：cache_key 里包含中文/日文时，简单 replace 会导致大量餐厅同名（全变成下划线），从而互相覆盖。
   // 用 hash 作为文件名，保证稳定且不会冲突。
   const key = String(cache_key || '');
   const digest = createHash('sha1').update(key).digest('hex').slice(0, 16);
-  const filename = `best-${digest}${ext}`;
+  const filename = `best-${digest}.webp`;
   const filepath = path.join(manualCoversDir, filename);
   const buf = Buffer.from(await resp.arrayBuffer());
-  fs.writeFileSync(filepath, buf);
+  // 统一转 webp 缩小体积，提升加载速度
+  try {
+    await sharp(buf)
+      .rotate()
+      .resize({ width: 900, withoutEnlargement: true })
+      .webp({ quality: 78 })
+      .toFile(filepath);
+  } catch {
+    // 某些站点返回的并非图片或格式异常：兜底直接落盘
+    fs.writeFileSync(filepath, buf);
+  }
   const localUrl = `/api/manual-covers/${filename}`;
   db.prepare(
     'UPDATE restaurant_media_best SET manual_image_url = ?, updated_at = datetime(\'now\') WHERE cache_key = ?'
