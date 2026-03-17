@@ -467,6 +467,9 @@ router.post('/media/manual-image', (req, res) => {
          updated_at = datetime('now')`
     ).run(cacheKey, cityZh, n, dataJson, url, manualEnabled);
 
+    // 手动封面已更新：清理推荐/媒体内存缓存，确保前端立即生效（无需重启）
+    clearRecommendationsCache();
+
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ ok: false, message: e?.message || 'Server error' });
