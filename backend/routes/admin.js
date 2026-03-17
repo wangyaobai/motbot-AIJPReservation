@@ -10,12 +10,22 @@ import { fileURLToPath } from 'url';
 import multer from 'multer';
 import { randomBytes, createHash } from 'crypto';
 import { importManualCoversFromJsonFile } from '../services/manualCovers.js';
-import sharp from 'sharp';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const manualCoversDir = path.join(__dirname, '..', 'public', 'manual-covers');
 
 const router = Router();
+
+// sharp 是原生依赖：某些服务器环境可能安装失败。这里做成“可选”，避免服务直接起不来导致 502。
+let sharpPromise = null;
+async function getSharp() {
+  if (!sharpPromise) {
+    sharpPromise = import('sharp')
+      .then((m) => m?.default || m)
+      .catch(() => null);
+  }
+  return sharpPromise;
+}
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -298,13 +308,18 @@ router.post('/media/upload-cover', (req, res) => {
       const inPath = req.file.path;
       const outName = `cover-${Date.now()}-${randomBytes(6).toString('hex')}.webp`;
       const outPath = path.join(manualCoversDir, outName);
-      await sharp(inPath)
-        .rotate()
-        .resize({ width: 900, withoutEnlargement: true })
-        .webp({ quality: 78 })
-        .toFile(outPath);
-      try { fs.unlinkSync(inPath); } catch {}
-      res.json({ ok: true, url: `/api/manual-covers/${outName}` });
+      const sharp = await getSharp();
+      if (sharp) {
+        await sharp(inPath)
+          .rotate()
+          .resize({ width: 900, withoutEnlargement: true })
+          .webp({ quality: 78 })
+          .toFile(outPath);
+        try { fs.unlinkSync(inPath); } catch {}
+        return res.json({ ok: true, url: `/api/manual-covers/${outName}` });
+      }
+      // 无 sharp 时兜底：直接返回原图（不影响服务可用性）
+      return res.json({ ok: true, url: `/api/manual-covers/${req.file.filename}` });
     } catch (e) {
       return res.status(500).json({ ok: false, message: e?.message || '图片处理失败' });
     }
@@ -351,6 +366,8 @@ async function downloadAndReplaceCover({ cache_key, manual_image_url } = {}) {
   const buf = Buffer.from(await resp.arrayBuffer());
   // 统一转 webp 缩小体积，提升加载速度
   try {
+    const sharp = await getSharp();
+    if (!sharp) throw new Error('sharp not available');
     await sharp(buf)
       .rotate()
       .resize({ width: 900, withoutEnlargement: true })
