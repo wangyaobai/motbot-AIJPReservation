@@ -4,6 +4,12 @@ const API = import.meta.env.VITE_API_BASE || '/api';
 
 const DEFAULT_BOOKING_REMARK = '如需提前选套餐，请 AI 沟通预留该店最受欢迎套餐';
 
+/** 根据文本判断语言：含日文假名/汉字则日语，否则英语 */
+function detectLang(text) {
+  if (!text?.trim()) return 'ja';
+  return /[\u3040-\u309f\u30a0-\u30ff\u4e00-\u9fff]/.test(text) ? 'ja' : 'en';
+}
+
 /** 默认模拟订单（与用户端预约表单字段一致） */
 const defaultOrder = () => {
   const d = new Date();
@@ -28,13 +34,15 @@ export function AdminVoiceTest({ apiBase = API }) {
   const [adminToken, setAdminToken] = useState(() =>
     typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('adminToken') || '' : ''
   );
-  const [lang, setLang] = useState('ja');
+  const [langMode, setLangMode] = useState('auto'); // auto | ja | en
   const [order, setOrder] = useState(defaultOrder);
   const [callRecords, setCallRecords] = useState([]);
-  const [lastUserText, setLastUserText] = useState('');
-  const [status, setStatus] = useState('idle'); // idle | recording | asr | thinking | tts | playing | done
+  const [inputText, setInputText] = useState('');
+  const [status, setStatus] = useState('idle');
   const [err, setErr] = useState('');
   const [isDone, setIsDone] = useState(false);
+  const [asrResult, setAsrResult] = useState('');
+  const [ttsUrl, setTtsUrl] = useState('');
   const mediaRecorderRef = useRef(null);
   const audioRef = useRef(null);
 
@@ -44,7 +52,14 @@ export function AdminVoiceTest({ apiBase = API }) {
 
   const headers = () => ({ 'x-admin-token': adminToken?.trim() || '', 'Content-Type': 'application/json' });
 
+  const getEffectiveLang = (text) => {
+    if (langMode === 'ja') return 'ja';
+    if (langMode === 'en') return 'en';
+    return detectLang(text || inputText);
+  };
+
   const fetchNextReply = async (records, lastText) => {
+    const lang = getEffectiveLang(lastText);
     const res = await fetch(`${apiBase}/admin/voice-test/next-reply`, {
       method: 'POST',
       headers: headers(),
@@ -60,7 +75,7 @@ export function AdminVoiceTest({ apiBase = API }) {
     return data;
   };
 
-  const fetchTts = async (text) => {
+  const fetchTts = async (text, lang) => {
     const res = await fetch(`${apiBase}/admin/voice-test/tts`, {
       method: 'POST',
       headers: headers(),
@@ -71,27 +86,48 @@ export function AdminVoiceTest({ apiBase = API }) {
     return data.url;
   };
 
+  const playResolveRef = useRef(null);
   const playAudio = (url) => {
+    setTtsUrl(url);
     return new Promise((resolve, reject) => {
-      const audio = new Audio(url);
-      audioRef.current = audio;
-      audio.onended = () => resolve();
-      audio.onerror = (e) => reject(e);
-      audio.play().catch(reject);
+      playResolveRef.current = { resolve, reject };
     });
   };
+  useEffect(() => {
+    if (!ttsUrl || !audioRef.current) return;
+    const el = audioRef.current;
+    const onEnd = () => {
+      setTtsUrl('');
+      playResolveRef.current?.resolve();
+      playResolveRef.current = null;
+    };
+    const onErr = (e) => {
+      setTtsUrl('');
+      playResolveRef.current?.reject(e);
+      playResolveRef.current = null;
+    };
+    el.onended = onEnd;
+    el.onerror = onErr;
+    el.play().catch((e) => {
+      setTtsUrl('');
+      playResolveRef.current?.reject(e);
+      playResolveRef.current = null;
+    });
+  }, [ttsUrl]);
 
   const runRound = async (userText) => {
     if (!userText?.trim()) return;
     setErr('');
+    setAsrResult('');
     const text = userText.trim();
     const newRecords = [...callRecords, { role: 'restaurant', text_ja: text }];
     setCallRecords(newRecords);
-    setLastUserText('');
+    setInputText('');
 
     setStatus('thinking');
     try {
       const reply = await fetchNextReply(newRecords, text);
+      const lang = getEffectiveLang(text);
       if (reply.done) {
         setIsDone(true);
         setStatus('done');
@@ -102,9 +138,9 @@ export function AdminVoiceTest({ apiBase = API }) {
       const aiText = reply.text_ja;
       setCallRecords((r) => [...r, { role: 'ai', text_ja: aiText }]);
 
-      const ttsUrl = await fetchTts(aiText);
+      const url = await fetchTts(aiText, lang);
       setStatus('playing');
-      await playAudio(ttsUrl);
+      await playAudio(url);
       if (!reply.done) setStatus('idle');
     } catch (e) {
       setErr(e.message || '请求失败');
@@ -112,23 +148,13 @@ export function AdminVoiceTest({ apiBase = API }) {
     }
   };
 
-  const handleStart = async () => {
-    const greeting = lang === 'en' ? 'Hello' : 'はい';
-    await runRound(greeting);
-  };
-
-  const handleTextSubmit = (e) => {
-    e.preventDefault();
-    if (lastUserText.trim()) runRound(lastUserText);
-  };
-
-  const handleAsrResult = async (text) => {
-    if (text?.trim()) await runRound(text);
-    else setStatus('idle');
+  const handleSubmit = () => {
+    if (inputText.trim()) runRound(inputText);
   };
 
   const startRecording = async () => {
     setErr('');
+    setAsrResult('');
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream);
@@ -142,7 +168,8 @@ export function AdminVoiceTest({ apiBase = API }) {
         try {
           const form = new FormData();
           form.append('audio', blob, 'recording.webm');
-          form.append('lang', lang);
+          const asrLang = langMode === 'auto' ? 'ja' : langMode;
+          form.append('lang', asrLang);
           const res = await fetch(`${apiBase}/admin/voice-test/asr`, {
             method: 'POST',
             headers: { 'x-admin-token': adminToken?.trim() || '' },
@@ -150,7 +177,10 @@ export function AdminVoiceTest({ apiBase = API }) {
           });
           const data = await res.json();
           if (!data.ok) throw new Error(data.message || 'ASR 失败');
-          await handleAsrResult(data.text);
+          const txt = data.text || '';
+          setAsrResult(txt);
+          setInputText(txt);
+          setStatus('idle');
         } catch (e) {
           setErr(e.message || 'ASR 失败');
           setStatus('idle');
@@ -175,13 +205,14 @@ export function AdminVoiceTest({ apiBase = API }) {
   const reset = () => {
     setCallRecords([]);
     setIsDone(false);
+    setInputText('');
+    setAsrResult('');
+    setTtsUrl('');
     setStatus('idle');
     setErr('');
   };
 
   const busy = ['recording', 'asr', 'thinking', 'tts', 'playing'].includes(status);
-  const canStart = !busy && callRecords.length === 0;
-  const canInput = !busy && callRecords.length > 0 && !isDone;
 
   return (
     <div className="admin-voice-test">
@@ -345,67 +376,88 @@ export function AdminVoiceTest({ apiBase = API }) {
 
       {err && <p className="form-error">{err}</p>}
 
-      <div className="admin-voice-test-actions">
-        {callRecords.length === 0 && (
-          <button type="button" className="btn-primary" onClick={handleStart} disabled={!canStart || !adminToken?.trim()}>
-            开始对话（模拟接听）
-          </button>
-        )}
-        {callRecords.length > 0 && !isDone && (
-          <>
+      <div className="admin-voice-test-dialogue">
+        <p className="dialogue-instruction">
+          不发起真实通话。您输入一句「餐厅」的回复（建议日语），系统生成 AI 下一句并通过阿里云 TTS 播放。
+        </p>
+        <div className="dialogue-control-panel">
+          <div className="dialogue-buttons">
+            <button type="button" className="btn-reset" onClick={reset} disabled={busy}>
+              重置对话
+            </button>
+            <button
+              type="button"
+              className="btn-submit"
+              onClick={handleSubmit}
+              disabled={busy || !inputText.trim() || !adminToken?.trim()}
+            >
+              提交餐厅回复 → 生成 AI 下一句
+            </button>
             <button
               type="button"
               className="btn-record"
               onMouseDown={(e) => { e.preventDefault(); startRecording(); }}
               onTouchStart={(e) => { e.preventDefault(); startRecording(); }}
-              disabled={busy}
+              disabled={busy || !adminToken?.trim()}
             >
-              {status === 'recording' ? '🔴 松开发送' : '按住说话'}
+              {status === 'recording' ? '🔴 录音中…' : '开始录音 (ASR)'}
             </button>
-            <form onSubmit={handleTextSubmit} className="form-inline">
-              <input
-                type="text"
-                value={lastUserText}
-                onChange={(e) => setLastUserText(e.target.value)}
-                placeholder={lang === 'ja' ? '输入模拟餐厅回复，如：かしこまりました' : 'Type restaurant reply, e.g. Sure'}
-                disabled={busy}
-              />
-              <button type="submit" disabled={busy || !lastUserText.trim()}>
-                发送
-              </button>
-            </form>
-          </>
-        )}
-        {callRecords.length > 0 && (
-          <button type="button" className="btn-link" onClick={reset} disabled={busy}>
-            重新开始
-          </button>
-        )}
-      </div>
-
-      <div className="admin-voice-test-status">
-        {status === 'recording' && '正在录音…'}
-        {status === 'asr' && '识别中…'}
-        {status === 'thinking' && 'AI 思考中…'}
-        {status === 'tts' && '合成语音…'}
-        {status === 'playing' && '播放中…'}
-        {status === 'done' && '对话已结束'}
-      </div>
-
-      <div className="admin-voice-test-log">
-        <h4>对话记录</h4>
-        {callRecords.length === 0 ? (
-          <p className="muted">暂无记录，点击「开始对话」模拟餐厅接听</p>
-        ) : (
-          <ul>
-            {callRecords.map((r, i) => (
-              <li key={i} className={r.role === 'ai' ? 'ai' : 'restaurant'}>
-                <span className="role">{r.role === 'ai' ? 'AI' : '餐厅'}</span>
-                <span className="text">{r.text_ja}</span>
-              </li>
-            ))}
-          </ul>
-        )}
+          </div>
+          <p className="dialogue-hint">手动输入文字，或点击开始录音。</p>
+          <div className="dialogue-lang-radio">
+            <label>
+              <input type="radio" name="lang" value="auto" checked={langMode === 'auto'} onChange={() => setLangMode('auto')} />
+              自动（根据输入判断）
+            </label>
+            <label>
+              <input type="radio" name="lang" value="ja" checked={langMode === 'ja'} onChange={() => setLangMode('ja')} />
+              日语
+            </label>
+            <label>
+              <input type="radio" name="lang" value="en" checked={langMode === 'en'} onChange={() => setLangMode('en')} />
+              英语
+            </label>
+          </div>
+          <textarea
+            className="dialogue-input"
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+            placeholder="はい、承知しました。お名前をお願いします。"
+            rows={3}
+            disabled={busy}
+          />
+          {ttsUrl && (
+            <div className="dialogue-audio">
+              <audio ref={audioRef} src={ttsUrl} controls />
+            </div>
+          )}
+          {asrResult && (
+            <p className="dialogue-asr-result">ASR识别到: {asrResult}</p>
+          )}
+        </div>
+        <div className="dialogue-status">
+          {status === 'recording' && '正在录音…'}
+          {status === 'asr' && '识别中…'}
+          {status === 'thinking' && 'AI 思考中…'}
+          {status === 'tts' && '合成语音…'}
+          {status === 'playing' && '播放中…'}
+          {status === 'done' && '对话已结束'}
+        </div>
+        <div className="dialogue-log">
+          <h4>对话记录</h4>
+          {callRecords.length === 0 ? (
+            <p className="muted">暂无记录，输入餐厅回复后点击提交</p>
+          ) : (
+            <div className="dialogue-bubbles">
+              {callRecords.map((r, i) => (
+                <div key={i} className={`bubble ${r.role === 'ai' ? 'bubble-ai' : 'bubble-restaurant'}`}>
+                  <span className="bubble-role">{r.role === 'ai' ? 'AI' : '餐厅'}</span>
+                  <span className="bubble-text">{r.text_ja}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

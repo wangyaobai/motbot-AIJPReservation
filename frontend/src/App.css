@@ -614,6 +614,35 @@ a.link-btn:hover {
 .admin-voice-test-log .text { font-size: 0.95rem; }
 .admin-voice-test-log .muted { color: #999; font-size: 0.9rem; margin: 0; }
 
+/* 对话模拟器（参考设计） */
+.admin-voice-test-dialogue { margin-top: 24px; }
+.dialogue-instruction { font-size: 0.85rem; color: #666; margin: 0 0 12px; line-height: 1.5; }
+.dialogue-control-panel { padding: 20px; background: #fff; border: 1px solid #e8e8e8; border-radius: 12px; margin-bottom: 12px; }
+.dialogue-buttons { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.dialogue-buttons .btn-reset { padding: 10px 20px; background: #fff; color: #e85d04; border: 1px solid #e85d04; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 0.9rem; }
+.dialogue-buttons .btn-reset:hover:not(:disabled) { background: #fff7ed; }
+.dialogue-buttons .btn-submit { padding: 10px 20px; background: #e85d04; color: #fff; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 0.9rem; }
+.dialogue-buttons .btn-submit:hover:not(:disabled) { background: #ea6b1e; }
+.dialogue-buttons .btn-record { padding: 10px 20px; background: #c2410c; color: #fff; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 0.9rem; }
+.dialogue-buttons .btn-record:hover:not(:disabled) { background: #d44a0e; }
+.dialogue-buttons button:disabled { opacity: 0.6; cursor: not-allowed; }
+.dialogue-hint { font-size: 0.85rem; color: #666; margin: 0 0 10px; }
+.dialogue-lang-radio { display: flex; gap: 16px; margin-bottom: 10px; font-size: 0.9rem; }
+.dialogue-lang-radio label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.dialogue-input { width: 100%; min-height: 80px; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 0.95rem; resize: vertical; font-family: inherit; margin-bottom: 10px; }
+.dialogue-audio { margin: 10px 0; }
+.dialogue-audio audio { width: 100%; max-width: 400px; height: 40px; }
+.dialogue-asr-result { font-size: 0.85rem; color: #666; margin: 8px 0 0; }
+.dialogue-status { min-height: 1.4em; font-size: 0.9rem; color: #666; margin-bottom: 12px; }
+.dialogue-log { padding: 16px; background: #fafafa; border: 1px solid #eee; border-radius: 12px; }
+.dialogue-log h4 { margin: 0 0 12px; font-size: 0.95rem; }
+.dialogue-bubbles { display: flex; flex-direction: column; gap: 10px; }
+.dialogue-bubbles .bubble { padding: 12px 14px; border-radius: 10px; max-width: 90%; }
+.dialogue-bubbles .bubble-restaurant { background: #f0f4f8; border-left: 4px solid #64748b; }
+.dialogue-bubbles .bubble-ai { background: #e0f2fe; border-left: 4px solid #0284c7; }
+.dialogue-bubbles .bubble-role { display: block; font-size: 0.75rem; color: #666; margin-bottom: 4px; font-weight: 600; }
+.dialogue-bubbles .bubble-text { font-size: 0.95rem; }
+
 .admin-query {
   width: 100%;
 }
