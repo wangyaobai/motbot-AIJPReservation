@@ -82,7 +82,7 @@ export function OrderResult({ order, apiBase, onReset, backLabel }) {
       </ul>
       {currentOrder.recording_url && (
         <p>
-          <a href={currentOrder.recording_url} target="_blank" rel="noopener noreferrer">
+          <a href={`${apiBase}/orders/${currentOrder.order_no}/recording`} target="_blank" rel="noopener noreferrer">
             {isEnUi ? 'Listen to recording' : '收听通话录音'}
           </a>
         </p>

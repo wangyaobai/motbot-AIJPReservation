@@ -177,7 +177,7 @@ export function OrderAiRecord() {
         <section style={{ marginBottom: 0 }}>
           <h3 style={{ fontSize: '1em', marginBottom: 8 }}>{isEnUi ? 'Recording' : '通话录音'}</h3>
           <audio
-            src={hasRecording ? order.recording_url : ''}
+            src={hasRecording ? `${apiBase}/orders/${orderNo}/recording` : ''}
             controls
             disabled={!hasRecording}
             style={{ width: '100%' }}

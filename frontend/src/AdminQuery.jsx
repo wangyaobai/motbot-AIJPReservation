@@ -332,7 +332,7 @@ export function AdminQuery({ apiBase }) {
                 <dd>{formatLocalDateTime(detailOrder.created_at)}</dd>
               </dl>
               {detailOrder.recording_url && (
-                <p><a href={detailOrder.recording_url} target="_blank" rel="noopener noreferrer">听录音</a></p>
+                <p><a href={`${apiBase}/orders/${detailOrder.order_no}/recording`} target="_blank" rel="noopener noreferrer">听录音</a></p>
               )}
             </div>
           </div>
@@ -367,7 +367,7 @@ export function AdminQuery({ apiBase }) {
                 </section>
               )}
               {detailOrder.recording_url && (
-                <p><a href={detailOrder.recording_url} target="_blank" rel="noopener noreferrer">听录音</a></p>
+                <p><a href={`${apiBase}/orders/${detailOrder.order_no}/recording`} target="_blank" rel="noopener noreferrer">听录音</a></p>
               )}
             </div>
           </div>

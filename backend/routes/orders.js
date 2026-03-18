@@ -191,6 +191,28 @@ router.get('/:orderNo/voucher-info', requireAuth, async (req, res) => {
   }
 });
 
+// 录音代理：Twilio 录音 URL 需 Basic Auth，浏览器直接播放会弹登录框，故经后端代理
+router.get('/:orderNo/recording', async (req, res) => {
+  try {
+    const order = db.prepare('SELECT * FROM orders WHERE order_no = ?').get(req.params.orderNo);
+    if (!order || !order.recording_url) return res.status(404).end();
+    const url = String(order.recording_url).trim();
+    if (!url.includes('api.twilio.com')) return res.status(404).end();
+    const sid = process.env.TWILIO_ACCOUNT_SID;
+    const token = process.env.TWILIO_AUTH_TOKEN;
+    if (!sid || !token) return res.status(503).json({ ok: false, message: '录音服务未配置' });
+    const auth = 'Basic ' + Buffer.from(sid + ':' + token).toString('base64');
+    const resp = await fetch(url, { headers: { Authorization: auth } });
+    if (!resp.ok) return res.status(resp.status).end();
+    const buf = Buffer.from(await resp.arrayBuffer());
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.send(buf);
+  } catch (e) {
+    console.error('[recording proxy]', e.message);
+    res.status(500).end();
+  }
+});
+
 // 根据订单号查询单笔
 router.get('/:orderNo', (req, res) => {
   try {
