@@ -45,7 +45,9 @@ function buildOrderContext(order, lang) {
   const contactName = (order.contact_name || '').toString().trim();
   const contactPhone = formatContactPhoneE164(order);
 
+  const restaurantName = (order.restaurant_name || '').toString().trim();
   if (l === 'en') {
+    if (restaurantName) parts.push(`Restaurant: ${restaurantName}`);
     parts.push(`First choice: ${order.booking_date || ''} ${firstTime}`);
     if (order.second_booking_date && order.second_booking_time) {
       parts.push(`Second choice: ${order.second_booking_date} ${secondTime}`);
@@ -63,6 +65,7 @@ function buildOrderContext(order, lang) {
   }
 
   // 默认日语
+  if (restaurantName) parts.push(`店名：${restaurantName}`);
   parts.push(`第一希望：${firstDate} ${firstTime}`);
   if (order.second_booking_date && order.second_booking_time) {
     parts.push(`第二希望：${secondDate} ${secondTime}`);
@@ -160,8 +163,8 @@ export async function getNextAiReply(order, callRecords = [], lastRestaurantText
 每次回复尽量简短（1～2 句），不要一次说太多。
 
 固定策略（必须遵守）：
-1. 身份：一开始务必说明是「帮客人预约」的。
-2. 首句：只说第一希望日期、时间、人数。不要提第二希望、饮食、套餐等。
+1. 开场：先确认餐厅名字（如「○○でございますか？」），对方确认后再介绍自己是「帮客人预约」的，再说第一希望日期、时间、人数。
+2. 首句：先确认店名→自我介绍→第一希望日期、时间、人数。不要提第二希望、饮食、套餐等。
 3. 若对方说满席/不可用：再礼貌提出第二希望日期时间。
 4. 若对方说时间 OK：再强调饮食禁忌（若有）。
 5. 若对方问套餐：默认「餐厅推荐套餐」；若订单备注有写具体套餐，则按用户写的沟通。
@@ -181,8 +184,8 @@ Important: your reply must be ONLY in English. It will be used for English TTS p
 Keep each reply SHORT (1-2 sentences). Do not dump everything at once.
 
 Fixed policy (must follow):
-1. Identity: clearly state you are calling to help a customer make a reservation.
-2. First message: only say first choice date, time, and party size. Do NOT mention second choice, dietary, or menu.
+1. Opening: first confirm the restaurant name (e.g. "Is this [restaurant name]?"), then introduce yourself as making a reservation on behalf of a customer, then say first choice date, time, and party size.
+2. First message: confirm restaurant name → introduce self → first choice date, time, party size. Do NOT mention second choice, dietary, or menu.
 3. If restaurant says full/unavailable: then politely offer second choice date/time.
 4. If restaurant says time OK: then emphasize dietary restrictions (if any).
 5. If restaurant asks about menu/set: default to "restaurant's recommended"; if order remarks specify something, use that.
@@ -196,14 +199,16 @@ Generate the next polite reply based on the dialogue history. If restaurant conf
 Output only English, no explanations.`;
 
   const firstMessageInstructionJa = `请根据上述订单信息，生成电话接通后的「首句」日语开场白，要求：
-1. 先自然问候（如 お電話ありがとうございます），再明确说明：お客様のご予約を代行してお電話しております（帮客人预约）。
-2. 只包含：第一希望日期、时间、人数。不要提第二希望、饮食、套餐等。
-3. 简短礼貌，1～2 句，全部日语。`;
+1. 先自然问候（如 お電話ありがとうございます）。
+2. 先确认餐厅名字（如「○○でございますか？」），再说明：お客様のご予約を代行してお電話しております（帮客人预约）。
+3. 再说第一希望日期、时间、人数。不要提第二希望、饮食、套餐等。
+4. 简短礼貌，2～3 句，全部日语。`;
 
   const firstMessageInstructionEn = `Create the English opening message after the call is answered. Requirements:
-1) Natural greeting, then clearly state: you are calling to help a customer make a reservation.
-2) Include ONLY: first choice date, time, and party size. Do NOT mention second choice, dietary, or menu.
-3) Keep it short and polite, 1-2 sentences. Output ONLY English.`;
+1) Natural greeting.
+2) First confirm the restaurant name (e.g. "Is this [restaurant name]?"), then state you are calling to help a customer make a reservation.
+3) Include first choice date, time, and party size. Do NOT mention second choice, dietary, or menu.
+4) Keep it short and polite, 2-3 sentences. Output ONLY English.`;
 
   const userContent = lastRestaurantText
     ? (lang === 'en'
