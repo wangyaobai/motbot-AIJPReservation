@@ -585,9 +585,12 @@ a.link-btn:hover {
 .admin-voice-test-desc { color: #666; font-size: 0.9rem; margin: 0 0 16px; line-height: 1.5; }
 .admin-voice-test-form { margin-bottom: 16px; }
 .admin-voice-test-form .form-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
-.admin-voice-test-form .form-row label { min-width: 80px; font-size: 0.9rem; }
+.admin-voice-test-form .form-row label { min-width: 90px; font-size: 0.9rem; }
 .admin-voice-test-form .form-inline { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.admin-voice-test-form input, .admin-voice-test-form select { padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 0.9rem; }
+.admin-voice-test-form input, .admin-voice-test-form select, .admin-voice-test-form textarea { padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 0.9rem; }
+.admin-voice-test-form textarea { width: 100%; min-width: 200px; resize: vertical; font-family: inherit; }
+.admin-voice-test-section { margin-bottom: 20px; padding: 16px; background: #fafafa; border-radius: 8px; border: 1px solid #eee; }
+.admin-voice-test-section h4 { margin: 0 0 12px; font-size: 0.95rem; color: #333; }
 .admin-voice-test-actions { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
 .admin-voice-test-actions .form-inline { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
 .admin-voice-test-actions .form-inline input { flex: 1; min-width: 120px; padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; }

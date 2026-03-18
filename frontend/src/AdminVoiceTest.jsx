@@ -2,23 +2,24 @@ import { useState, useRef, useEffect } from 'react';
 
 const API = import.meta.env.VITE_API_BASE || '/api';
 
-/** 默认模拟订单 */
+const DEFAULT_BOOKING_REMARK = '如需提前选套餐，请 AI 沟通预留该店最受欢迎套餐';
+
+/** 默认模拟订单（与用户端预约表单字段一致） */
 const defaultOrder = () => {
   const d = new Date();
   const date = d.toISOString().slice(0, 10);
-  const time = '18:00';
   return {
     booking_date: date,
-    booking_time: time,
+    booking_time: '18:00',
     second_booking_date: '',
     second_booking_time: '',
     adult_count: 2,
     child_count: 0,
     party_size: 2,
     dietary_notes: '',
-    booking_remark: '',
+    booking_remark: DEFAULT_BOOKING_REMARK,
     contact_name: 'テスト',
-    contact_phone: '+8613800138000',
+    contact_phone: '13800138000',
     contact_phone_region: 'cn',
   };
 };
@@ -207,37 +208,138 @@ export function AdminVoiceTest({ apiBase = API }) {
             <option value="en">英语</option>
           </select>
         </div>
-        <div className="form-row">
-          <label>预约信息</label>
-          <span className="form-inline">
-            <input
-              type="date"
-              value={order.booking_date}
-              onChange={(e) => setOrder((o) => ({ ...o, booking_date: e.target.value }))}
+
+        <div className="admin-voice-test-section">
+          <h4>预约信息（与用户端一致）</h4>
+          <div className="form-row">
+            <label>第一希望</label>
+            <span className="form-inline">
+              <input
+                type="date"
+                value={order.booking_date}
+                onChange={(e) => setOrder((o) => ({ ...o, booking_date: e.target.value }))}
+                disabled={busy}
+              />
+              <input
+                type="time"
+                value={order.booking_time}
+                onChange={(e) => setOrder((o) => ({ ...o, booking_time: e.target.value }))}
+                disabled={busy}
+              />
+            </span>
+          </div>
+          <div className="form-row">
+            <label>第二希望</label>
+            <span className="form-inline">
+              <input
+                type="date"
+                value={order.second_booking_date}
+                onChange={(e) =>
+                  setOrder((o) => ({
+                    ...o,
+                    second_booking_date: e.target.value,
+                    second_booking_time: e.target.value ? o.second_booking_time : '',
+                  }))
+                }
+                disabled={busy}
+                placeholder="YYYY-MM-DD"
+              />
+              <input
+                type="time"
+                value={order.second_booking_time}
+                onChange={(e) => setOrder((o) => ({ ...o, second_booking_time: e.target.value }))}
+                disabled={busy}
+              />
+            </span>
+          </div>
+          <div className="form-row">
+            <label>人数</label>
+            <span className="form-inline">
+              <input
+                type="number"
+                min={0}
+                max={20}
+                value={order.adult_count}
+                onChange={(e) => {
+                  const v = Math.max(0, parseInt(e.target.value, 10) || 0);
+                  setOrder((o) => ({ ...o, adult_count: v, party_size: v + (o.child_count || 0) }));
+                }}
+                disabled={busy}
+                style={{ width: 50 }}
+              />
+              成人
+              <input
+                type="number"
+                min={0}
+                max={20}
+                value={order.child_count}
+                onChange={(e) => {
+                  const v = Math.max(0, parseInt(e.target.value, 10) || 0);
+                  setOrder((o) => ({ ...o, child_count: v, party_size: (o.adult_count || 0) + v }));
+                }}
+                disabled={busy}
+                style={{ width: 50 }}
+              />
+              儿童
+            </span>
+          </div>
+          <div className="form-row">
+            <label>饮食注意</label>
+            <textarea
+              value={order.dietary_notes}
+              onChange={(e) => setOrder((o) => ({ ...o, dietary_notes: e.target.value }))}
+              placeholder="过敏食材、忌口、宗教饮食限制等，无则留空"
+              rows={2}
               disabled={busy}
             />
-            <input
-              type="time"
-              value={order.booking_time}
-              onChange={(e) => setOrder((o) => ({ ...o, booking_time: e.target.value }))}
+          </div>
+          <div className="form-row">
+            <label>预约备注</label>
+            <textarea
+              value={order.booking_remark}
+              onChange={(e) => setOrder((o) => ({ ...o, booking_remark: e.target.value }))}
+              placeholder="如需提前选套餐，请 AI 沟通预留该店最受欢迎套餐"
+              rows={2}
               disabled={busy}
             />
+          </div>
+        </div>
+
+        <div className="admin-voice-test-section">
+          <h4>联系人信息</h4>
+          <div className="form-row">
+            <label>预约人</label>
             <input
-              type="number"
-              min={1}
-              value={order.party_size}
-              onChange={(e) =>
-                setOrder((o) => ({
-                  ...o,
-                  party_size: parseInt(e.target.value, 10) || 1,
-                  adult_count: parseInt(e.target.value, 10) || 1,
-                }))
-              }
+              type="text"
+              value={order.contact_name}
+              onChange={(e) => setOrder((o) => ({ ...o, contact_name: e.target.value }))}
+              placeholder="预约使用的姓名"
               disabled={busy}
-              style={{ width: 50 }}
+              style={{ width: 180 }}
             />
-            人
-          </span>
+          </div>
+          <div className="form-row">
+            <label>手机号地区</label>
+            <select
+              value={order.contact_phone_region}
+              onChange={(e) => setOrder((o) => ({ ...o, contact_phone_region: e.target.value }))}
+              disabled={busy}
+            >
+              <option value="cn">中国 (+86)</option>
+              <option value="jp">日本 (+81)</option>
+            </select>
+          </div>
+          <div className="form-row">
+            <label>手机号</label>
+            <input
+              type="tel"
+              value={order.contact_phone}
+              onChange={(e) => setOrder((o) => ({ ...o, contact_phone: e.target.value }))}
+              placeholder={order.contact_phone_region === 'jp' ? '090-1234-5678' : '138 0000 0000'}
+              disabled={busy}
+              style={{ width: 180 }}
+            />
+          </div>
         </div>
       </div>
 
