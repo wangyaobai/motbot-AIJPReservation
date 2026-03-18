@@ -18,12 +18,16 @@ export async function startTwilioCallForOrder(order) {
   const twilio = (await import('twilio')).default;
   const client = twilio(sid, token);
   const to = (order.restaurant_phone || '').replace(/\D/g, '');
+  const callLang = (order.call_lang || '').toLowerCase();
   let toE164;
   if (to.startsWith('86') && to.length >= 11) {
     toE164 = '+' + to;
   } else if (to.length === 11 && to.startsWith('1')) {
-    // 11 位且以 1 开头：按 +1 北美号码处理（餐厅主要在美国，而非中国）
+    // 11 位且以 1 开头：+1 北美号码
     toE164 = '+1' + to.slice(1);
+  } else if (to.length === 10 && callLang === 'en') {
+    // 10 位且欧美订单：+1 美国号码（如 213-514-5724）
+    toE164 = '+1' + to;
   } else if (to.startsWith('0')) {
     toE164 = '+81' + to.slice(1);
   } else if (to.length <= 10) {
