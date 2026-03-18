@@ -45,6 +45,39 @@ async function downloadToBuffer(recordingUrl, authHeader) {
 }
 
 /**
+ * 将任意格式音频转为 16000Hz 单声道 MP3，以兼容阿里云 ASR。
+ * @param {Buffer} inputBuf - 原始音频
+ * @param {string} inputExt - 输入格式扩展名，如 'webm'、'mp3'、'ogg'、'wav'
+ * @returns {Promise<Buffer>} 16k 单声道 MP3
+ */
+export async function convertTo16kMp3(inputBuf, inputExt = 'webm') {
+  const ts = Date.now();
+  const ext = String(inputExt || 'webm').replace(/^\./, '');
+  const inPath = path.join(tmpDir, `asr-in-${ts}.${ext}`);
+  const outPath = path.join(tmpDir, `asr-out-${ts}.mp3`);
+  try {
+    fs.writeFileSync(inPath, inputBuf);
+    await new Promise((resolve, reject) => {
+      const proc = spawn('ffmpeg', [
+        '-y', '-i', inPath,
+        '-ar', '16000', '-ac', '1',
+        '-f', 'mp3', outPath,
+      ], { stdio: ['ignore', 'pipe', 'pipe'] });
+      let err = '';
+      proc.stderr?.on('data', (d) => { err += d.toString(); });
+      proc.on('close', (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(`ffmpeg exit ${code}: ${err.slice(-200)}`));
+      });
+    });
+    return fs.readFileSync(outPath);
+  } finally {
+    try { fs.unlinkSync(inPath); } catch {}
+    try { fs.unlinkSync(outPath); } catch {}
+  }
+}
+
+/**
  * 使用 ffmpeg 将音频转为 16000Hz 单声道，以兼容阿里云 ASR（仅支持 8000/16000Hz）。
  * Twilio MP3 录音常为 22050Hz，直接上传会报 40000009。
  */

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { AdminQuery } from './AdminQuery';
 import { AdminMediaCover } from './AdminMediaCover';
 import { AdminShops } from './AdminShops';
+import { AdminVoiceTest } from './AdminVoiceTest';
 import './App.css';
 
 const API = import.meta.env.VITE_API_BASE || '/api';
@@ -38,11 +39,19 @@ export default function AdminPage() {
         >
           店铺管理
         </button>
+        <button
+          type="button"
+          className={tab === 'voice' ? 'active' : ''}
+          onClick={() => setTab('voice')}
+        >
+          语音测试
+        </button>
       </nav>
       <main className="admin-main">
         {tab === 'orders' && <AdminQuery apiBase={API} />}
         {tab === 'media' && <AdminMediaCover apiBase={API} />}
         {tab === 'shops' && <AdminShops apiBase={API} />}
+        {tab === 'voice' && <AdminVoiceTest apiBase={API} />}
       </main>
     </div>
   );

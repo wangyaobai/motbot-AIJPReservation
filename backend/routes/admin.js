@@ -19,6 +19,9 @@ import { fileURLToPath } from 'url';
 import multer from 'multer';
 import { randomBytes, createHash } from 'crypto';
 import { importManualCoversFromJsonFile } from '../services/manualCovers.js';
+import { transcribeJaFromBuffer, transcribeEnFromBuffer, convertTo16kMp3 } from '../services/aliyunAsr.js';
+import { synthesizeJaToUrl, synthesizeEnToUrl } from '../services/aliyunTts.js';
+import { getNextAiReply } from '../services/aiDialogue.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const manualCoversDir = path.join(__dirname, '..', 'public', 'manual-covers');
@@ -48,6 +51,7 @@ const storage = multer.diskStorage({
   },
 });
 const uploadCover = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } }).single('cover');
+const uploadAudio = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } }).single('audio');
 const db = getDb();
 
 let refineInFlight = false;
@@ -673,6 +677,71 @@ router.post('/media/manual-image', (req, res) => {
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ ok: false, message: e?.message || 'Server error' });
+  }
+});
+
+// ========== AI 预定语音测试（多轮对话） ==========
+function getBaseUrl(req) {
+  const base = process.env.BASE_URL;
+  if (base) return base.replace(/\/$/, '');
+  const host = req.get('host') || 'localhost:3000';
+  const proto = req.get('x-forwarded-proto') || req.protocol || 'http';
+  return `${proto}://${host}`;
+}
+
+/** 语音转文字：上传音频（webm/mp3/wav 等），返回转写文本 */
+router.post('/voice-test/asr', (req, res) => {
+  if (!requireAdminToken(req, res)) return;
+  uploadAudio(req, res, async (err) => {
+    if (err) return res.status(400).json({ ok: false, message: err.message || '上传失败' });
+    const file = req.file;
+    if (!file || !file.buffer?.length) return res.status(400).json({ ok: false, message: '请上传音频文件' });
+    const lang = (req.body?.lang || 'ja').toString().toLowerCase() === 'en' ? 'en' : 'ja';
+    try {
+      const mimetype = (file.mimetype || '').toLowerCase();
+      const extMap = { 'audio/webm': 'webm', 'audio/mp3': 'mp3', 'audio/mpeg': 'mp3', 'audio/wav': 'wav', 'audio/ogg': 'ogg' };
+      const ext = extMap[mimetype] || (file.originalname?.match(/\.(\w+)$/)?.[1]) || 'webm';
+      const buf16k = await convertTo16kMp3(file.buffer, ext);
+      const transcribe = lang === 'en' ? transcribeEnFromBuffer : transcribeJaFromBuffer;
+      const text = await transcribe(buf16k, { format: 'mp3', sample_rate: '16000' });
+      res.json({ ok: true, text: text || '' });
+    } catch (e) {
+      console.error('[admin voice-test asr]', e.message);
+      res.status(500).json({ ok: false, message: e.message || 'ASR 失败' });
+    }
+  });
+});
+
+/** 获取 AI 下一句回复 */
+router.post('/voice-test/next-reply', async (req, res) => {
+  if (!requireAdminToken(req, res)) return;
+  try {
+    const { order, callRecords, lastRestaurantText, lang } = req.body || {};
+    const l = (lang || 'ja').toString().toLowerCase() === 'en' ? 'en' : 'ja';
+    const orderWithLang = { ...(order || {}), _dialogue_lang: l };
+    const result = await getNextAiReply(orderWithLang, callRecords || [], lastRestaurantText || null);
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    console.error('[admin voice-test next-reply]', e.message);
+    res.status(500).json({ ok: false, message: e.message || '生成失败' });
+  }
+});
+
+/** 文字转语音：返回 TTS 音频 URL */
+router.post('/voice-test/tts', async (req, res) => {
+  if (!requireAdminToken(req, res)) return;
+  try {
+    const { text, lang } = req.body || {};
+    if (!text || !String(text).trim()) return res.status(400).json({ ok: false, message: '缺少 text' });
+    const l = (lang || 'ja').toString().toLowerCase() === 'en' ? 'en' : 'ja';
+    const baseUrl = getBaseUrl(req);
+    const synthesize = l === 'en' ? synthesizeEnToUrl : synthesizeJaToUrl;
+    const url = await synthesize(String(text).trim(), baseUrl);
+    if (!url) return res.status(503).json({ ok: false, message: 'TTS 未配置或生成失败' });
+    res.json({ ok: true, url });
+  } catch (e) {
+    console.error('[admin voice-test tts]', e.message);
+    res.status(500).json({ ok: false, message: e.message || 'TTS 失败' });
   }
 });
 
