@@ -489,7 +489,7 @@ export function HomePage() {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <h3 style={{ margin: '0 0 4px', fontSize: '1rem' }}>{isEn ? (r.name_en ?? translated[`${r.id}-name`] ?? enName(r)) : r.name}</h3>
                   <p style={{ margin: '0 0 6px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                    {isEn ? (r.city_en ?? translated[`${r.id}-city`] || '—') : r.city}
+                    {isEn ? (r.city_en ?? (translated[`${r.id}-city`] || '—')) : r.city}
                   </p>
                   <p style={{ margin: '0 0 4px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
                     {isEn ? 'Phone: ' : '电话：'}
@@ -497,11 +497,11 @@ export function HomePage() {
                   </p>
                   <p style={{ margin: '0 0 4px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                     {isEn ? 'Address: ' : '地址：'}
-                    {isEn ? (r.address_en ?? translated[`${r.id}-address`] || '—') : r.address}
+                    {isEn ? (r.address_en ?? (translated[`${r.id}-address`] || '—')) : r.address}
                   </p>
                   <p style={{ margin: '4px 0 8px', fontSize: '0.8rem', color: 'var(--text)' }}>
                     {isEn ? 'Highlights: ' : '餐厅特色：'}
-                    {isEn ? (r.feature_en ?? translated[`${r.id}-feature`] || '—') : r.feature}
+                    {isEn ? (r.feature_en ?? (translated[`${r.id}-feature`] || '—')) : r.feature}
                   </p>
                   <button
                     type="button"
