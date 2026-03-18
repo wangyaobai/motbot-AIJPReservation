@@ -1,7 +1,9 @@
 import { getDb } from '../db.js';
+import { set as setFirstMessageCache } from './firstMessageCache.js';
 
 /**
  * 为订单发起 Twilio 外呼。会更新订单的 twilio_call_sid、status=calling 并清空 ai_call_status 展示字段。
+ * 同时预生成首句（LLM+TTS）供接听后快速响应，避免 502。
  * @param {object} order - 订单行（需含 id, order_no, restaurant_phone）
  * @returns {{ call_sid: string }}
  */
@@ -39,8 +41,7 @@ export async function startTwilioCallForOrder(order) {
     from,
     url: `${apiBase}/voice/${order.order_no}`,
     statusCallback: `${apiBase}/status`,
-    // Twilio 要求字符串 'true' 或 'false'
-    record: 'true',
+    record: 'true', // 录制双方完整对话
     recordingStatusCallback: `${apiBase}/recording`,
     recordingStatusCallbackEvent: ['completed'],
     timeout: 30,
@@ -52,5 +53,23 @@ export async function startTwilioCallForOrder(order) {
       ai_call_status_updated_at = NULL, updated_at = datetime('now')
     WHERE id = ?
   `).run(call.sid, order.id);
+
+  // 预生成首句（典型接听语「はい」的回复），供接听后快速响应，避免 502
+  setImmediate(async () => {
+    try {
+      const { getNextAiReply } = await import('./aiDialogue.js');
+      const { synthesizeJaToUrl, synthesizeEnToUrl } = await import('./aliyunTts.js');
+      const lang = (order.call_lang || 'ja').toLowerCase() === 'en' ? 'en' : 'ja';
+      const greeting = lang === 'ja' ? 'はい' : 'Hello';
+      const reply = await getNextAiReply({ ...order, _dialogue_lang: lang }, [{ role: 'restaurant', text_ja: greeting }], greeting);
+      const ttsUrl = lang === 'en'
+        ? await synthesizeEnToUrl(reply.text_ja, baseUrl)
+        : await synthesizeJaToUrl(reply.text_ja, baseUrl);
+      setFirstMessageCache(order.order_no, { text_ja: reply.text_ja, ttsUrl, lang });
+    } catch (e) {
+      console.warn('[twilioCall] pre-generate first message failed', e.message);
+    }
+  });
+
   return { call_sid: call.sid };
 }

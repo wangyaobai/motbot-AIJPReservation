@@ -1,11 +1,13 @@
 /**
  * 多轮通话：Record 结束后的回调。对录音做 ASR → 更新 call_records → LLM 下一句 → TTS → 返回 Play+Record 或挂断。
+ * 优先使用预生成缓存（首句），避免 502。
  */
 import twilio from 'twilio';
 import { getDb } from '../db.js';
 import { transcribeJaFromUrl } from '../services/aliyunAsr.js';
 import { getNextAiReply } from '../services/aiDialogue.js';
-import { synthesizeJaToUrl } from '../services/aliyunTts.js';
+import { synthesizeJaToUrl, synthesizeEnToUrl } from '../services/aliyunTts.js';
+import { get as getFirstMessageCache, remove as removeFirstMessageCache } from '../services/firstMessageCache.js';
 
 const VoiceResponse = twilio.twiml.VoiceResponse;
 const MAX_ROUNDS = 8;
@@ -45,6 +47,7 @@ export default async function voiceRecordHandler(req, res) {
   }
 
   const baseUrl = getBaseUrl(req);
+  const lang = (order.call_lang || 'ja').toLowerCase() === 'en' ? 'en' : 'ja';
   let callRecords = [];
   try {
     const raw = order.call_records;
@@ -56,7 +59,17 @@ export default async function voiceRecordHandler(req, res) {
   const lastText = await transcribeJaFromUrl(recordingUri, { authHeader });
   callRecords.push({ role: 'restaurant', text_ja: lastText || '(無音または聞き取れず)' });
 
-  const nextReply = await getNextAiReply(order, callRecords, lastText || null);
+  let nextReply;
+  let ttsUrlCached = null;
+  const isFirstReply = callRecords.length === 1;
+  const cached = isFirstReply ? getFirstMessageCache(order.order_no) : null;
+  if (cached) {
+    removeFirstMessageCache(order.order_no);
+    nextReply = { text_ja: cached.text_ja, done: false };
+    ttsUrlCached = cached.ttsUrl;
+  } else {
+    nextReply = await getNextAiReply(order, callRecords, lastText || null);
+  }
   callRecords.push({ role: 'ai', text_ja: nextReply.text_ja });
 
   db.prepare('UPDATE orders SET call_records = ?, updated_at = datetime(\'now\') WHERE id = ?').run(
@@ -71,17 +84,22 @@ export default async function voiceRecordHandler(req, res) {
         order.id
       );
     }
-    twiml.say({ language: 'ja-JP' }, nextReply.text_ja || 'ご確認ありがとうございます。失礼いたします。');
+    twiml.say(
+      { language: lang === 'en' ? 'en-US' : 'ja-JP' },
+      nextReply.text_ja || (lang === 'en' ? 'Thank you for confirming. Goodbye.' : 'ご確認ありがとうございます。失礼いたします。')
+    );
     twiml.hangup();
     res.type('text/xml').send(twiml.toString());
     return;
   }
 
-  const ttsUrl = await synthesizeJaToUrl(nextReply.text_ja, baseUrl);
+  const ttsUrl = ttsUrlCached || await (lang === 'en'
+    ? synthesizeEnToUrl(nextReply.text_ja, baseUrl)
+    : synthesizeJaToUrl(nextReply.text_ja, baseUrl));
   if (ttsUrl) {
     twiml.play(ttsUrl);
   } else {
-    twiml.say({ language: 'ja-JP' }, nextReply.text_ja);
+    twiml.say({ language: lang === 'en' ? 'en-US' : 'ja-JP' }, nextReply.text_ja);
   }
   twiml.record({
     maxLength: 30,

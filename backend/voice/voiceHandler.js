@@ -1,7 +1,5 @@
 import { getDb } from '../db.js';
 import twilio from 'twilio';
-import { getNextAiReply } from '../services/aiDialogue.js';
-import { synthesizeJaToUrl, synthesizeEnToUrl } from '../services/aliyunTts.js';
 const VoiceResponse = twilio.twiml.VoiceResponse;
 
 function getBaseUrl(req) {
@@ -21,30 +19,22 @@ function formatDateForJapanese(ymd) {
 }
 
 /**
- * 2.5 期：多轮对话入口。首句由 LLM 生成 + 阿里云 TTS 播放，再 Record；若无 TTS 则退回固定话术。
+ * 2.5 期：多轮对话入口。
+ * 1) 先 Record 等对方接通并说「喂」等，再 Play AI 话术（不在一接通就开讲）
+ * 2) 首句由预生成缓存或 LLM 生成，避免 502
  */
 async function handleMultiRound(order, orderNo, req, res) {
   const baseUrl = getBaseUrl(req);
   const twiml = new VoiceResponse();
 
-  const lang = (order.call_lang || 'ja').toLowerCase() === 'en' ? 'en' : 'ja';
-  const reply = await getNextAiReply({ ...order, _dialogue_lang: lang }, [], null);
-  const ttsUrl = await (lang === 'en'
-    ? synthesizeEnToUrl(reply.text_ja, baseUrl)
-    : synthesizeJaToUrl(reply.text_ja, baseUrl));
-
-  if (ttsUrl) {
-    twiml.play(ttsUrl);
-    twiml.record({
-      maxLength: 30,
-      playBeep: false,
-      action: `${baseUrl}/twilio/voice/${orderNo}/record`,
-      method: 'POST',
-    });
-  } else {
-    twiml.say({ language: lang === 'en' ? 'en-US' : 'ja-JP' }, reply.text_ja);
-    twiml.redirect({ method: 'POST' }, `${baseUrl}/twilio/voice/${orderNo}/done`);
-  }
+  // 先 Record 5 秒，等对方接通并说「はい」「もしもし」等，再在 voiceRecordHandler 中 Play AI 话术
+  twiml.record({
+    maxLength: 5,
+    playBeep: false,
+    timeout: 5,
+    action: `${baseUrl}/twilio/voice/${orderNo}/record`,
+    method: 'POST',
+  });
 
   res.type('text/xml').send(twiml.toString());
 }
