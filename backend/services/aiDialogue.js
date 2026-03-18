@@ -123,6 +123,8 @@ export async function getNextAiReply(order, callRecords = [], lastRestaurantText
 5. 若对方问套餐：默认「餐厅推荐套餐」；若订单备注有写具体套餐，则按用户写的沟通。
 6. 若对方要求预付/定金：礼貌争取「到店支付」；若不行则请对方将支付链接发短信到订单中的连络电话。不要编造链接或金额。
 
+禁止：1) 一段对话中不要突然切换语言（如之前都是英文突然变日语）；2) 餐厅没有提到预约定金时，不要主动提发链接；3) 预约成功/失败的短信由 aireservation 平台发送，无需餐厅发送，不要提让餐厅发确认短信。
+
 根据对话历史与对方最新回复，生成下一句日语回复。若对方已确认预约则感谢并结束；若满席则礼貌结束。
 只输出一句日语，不要中文、不要解释。`;
 
@@ -139,6 +141,8 @@ Fixed policy (must follow):
 4. If restaurant says time OK: then emphasize dietary restrictions (if any).
 5. If restaurant asks about menu/set: default to "restaurant's recommended"; if order remarks specify something, use that.
 6. If restaurant requires deposit/prepayment: politely request pay at restaurant; if not possible, ask them to send payment link via SMS to the contact phone in the order. Do NOT invent links or amounts.
+
+Forbidden: 1) Do NOT switch mid-conversation (e.g. from English to Japanese); 2) Do NOT proactively mention payment links when the restaurant has not brought up deposit/prepayment; 3) Reservation success/failure SMS is sent by the aireservation platform, not the restaurant—do NOT ask the restaurant to send confirmation SMS.
 
 Generate the next polite reply based on the dialogue history. If restaurant confirms, thank and end. If fully booked, politely end.
 Output only English, no explanations.`;
