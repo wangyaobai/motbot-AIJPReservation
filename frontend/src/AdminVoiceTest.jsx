@@ -87,7 +87,9 @@ export function AdminVoiceTest({ apiBase = API }) {
   };
 
   const playResolveRef = useRef(null);
-  const playAudio = (url) => {
+  const playDoneRef = useRef(false); // 当前轮是否已结束对话
+  const playAudio = (url, isDone) => {
+    playDoneRef.current = !!isDone;
     setTtsUrl(url);
     return new Promise((resolve, reject) => {
       playResolveRef.current = { resolve, reject };
@@ -96,21 +98,25 @@ export function AdminVoiceTest({ apiBase = API }) {
   useEffect(() => {
     if (!ttsUrl || !audioRef.current) return;
     const el = audioRef.current;
-    const onEnd = () => {
+    const clearPlaying = () => {
       playResolveRef.current?.resolve();
       playResolveRef.current = null;
+      setStatus((prev) => (prev === 'playing' ? (playDoneRef.current ? 'done' : 'idle') : prev));
     };
     const onErr = (e) => {
       setTtsUrl('');
       playResolveRef.current?.reject(e);
       playResolveRef.current = null;
+      setStatus('idle');
     };
-    el.onended = onEnd;
+    el.onended = clearPlaying;
+    el.onabort = clearPlaying;
     el.onerror = onErr;
     el.play().catch((e) => {
       setTtsUrl('');
       playResolveRef.current?.reject(e);
       playResolveRef.current = null;
+      setStatus('idle');
     });
   }, [ttsUrl]);
 
@@ -151,7 +157,7 @@ export function AdminVoiceTest({ apiBase = API }) {
 
       const url = await fetchTts(aiText, lang);
       setStatus('playing');
-      await playAudio(url);
+      await playAudio(url, reply.done);
       if (!reply.done) setStatus('idle');
     } catch (e) {
       setErr(e.message || '请求失败');
