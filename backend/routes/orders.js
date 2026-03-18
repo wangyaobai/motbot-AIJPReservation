@@ -266,14 +266,15 @@ router.post('/:orderNo/call', async (req, res) => {
     const updated = db.prepare('SELECT * FROM orders WHERE order_no = ?').get(req.params.orderNo);
     res.json({ ok: true, order: updated, call_sid: updated.twilio_call_sid });
   } catch (e) {
-    console.error(e);
     const status = Number(e?.status || 0);
     const code = e?.code ? String(e.code) : '';
     const moreInfo = e?.moreInfo ? String(e.moreInfo) : '';
+    const msg = e?.message || '发起通话失败';
+    console.error('[call] Twilio error:', { status, code, message: msg, moreInfo });
     if (status === 403) {
       return res.status(403).json({
         ok: false,
-        message: `电话服务返回 403（权限/账号限制）。请检查 Twilio 账号权限、号码 Voice 能力、以及是否为试用账号仅允许拨打已验证号码。${code ? `code=${code} ` : ''}${moreInfo ? `moreInfo=${moreInfo}` : ''}`.trim(),
+        message: `电话服务返回 403（权限/账号限制）。${code ? `Twilio 错误码: ${code}。` : ''}请检查 Voice Geo Permissions 是否已勾选 United States。${moreInfo ? `详情: ${moreInfo}` : ''}`.trim(),
       });
     }
     if (status === 401) {
@@ -282,7 +283,14 @@ router.post('/:orderNo/call', async (req, res) => {
         message: `电话服务鉴权失败（401）。请检查 TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN 是否正确。${code ? `code=${code}` : ''}`.trim(),
       });
     }
-    res.status(500).json({ ok: false, message: e.message || '发起通话失败' });
+    if (status === 400) {
+      return res.status(400).json({
+        ok: false,
+        message: code ? `${msg}（Twilio 错误码: ${code}。21215=地区权限未开，21216=账号限制，21219=试用账号需验证号码）` : msg,
+      });
+    }
+    const errMsg = code ? `${msg}（Twilio 错误码: ${code}）` : msg;
+    res.status(500).json({ ok: false, message: errMsg });
   }
 });
 
