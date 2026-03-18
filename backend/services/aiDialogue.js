@@ -187,7 +187,8 @@ Output only English, no explanations.`;
     const resp = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
     const data = await resp.json().catch(() => ({}));
     const raw = (data.choices?.[0]?.message?.content || '').trim();
-    let textJa = raw.replace(/^["']|["']$/g, '').trim() || 'ご確認のほど、よろしくお願いいたします。';
+    const fallback = lang === 'en' ? 'Thank you. We appreciate your help.' : 'ご確認のほど、よろしくお願いいたします。';
+    let textJa = raw.replace(/^["']|["']$/g, '').trim() || fallback;
 
     // 若期望日语却输出中文，强制再生成一次（更严格约束）
     if (lang === 'ja' && containsChinese(textJa)) {

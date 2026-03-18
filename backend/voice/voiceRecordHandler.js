@@ -4,7 +4,7 @@
  */
 import twilio from 'twilio';
 import { getDb } from '../db.js';
-import { transcribeJaFromUrl } from '../services/aliyunAsr.js';
+import { transcribeJaFromUrl, transcribeEnFromUrl } from '../services/aliyunAsr.js';
 import { getNextAiReply } from '../services/aiDialogue.js';
 import { synthesizeJaToUrl, synthesizeEnToUrl } from '../services/aliyunTts.js';
 import { get as getFirstMessageCache, remove as removeFirstMessageCache } from '../services/firstMessageCache.js';
@@ -56,8 +56,10 @@ export default async function voiceRecordHandler(req, res) {
 
   const authHeader = getAuthHeader();
   const recordingUri = (recordingUrl || '').replace(/\.(mp3|wav)?$/i, '') + '.mp3';
-  const lastText = await transcribeJaFromUrl(recordingUri, { authHeader });
-  callRecords.push({ role: 'restaurant', text_ja: lastText || '(無音または聞き取れず)' });
+  const transcribe = lang === 'en' ? transcribeEnFromUrl : transcribeJaFromUrl;
+  const lastText = await transcribe(recordingUri, { authHeader });
+  const emptyFallback = lang === 'en' ? '(silence or unclear)' : '(無音または聞き取れず)';
+  callRecords.push({ role: 'restaurant', text_ja: lastText || emptyFallback });
 
   let nextReply;
   let ttsUrlCached = null;
