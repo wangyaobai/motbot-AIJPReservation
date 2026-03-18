@@ -15,6 +15,7 @@ const defaultOrder = () => {
   const d = new Date();
   const date = d.toISOString().slice(0, 10);
   return {
+    restaurant_name: '',
     booking_date: date,
     booking_time: '18:00',
     second_booking_date: '',
@@ -255,6 +256,17 @@ export function AdminVoiceTest({ apiBase = API }) {
         </div>
         <div className="admin-voice-test-section">
           <h4>预约信息（与用户端一致）</h4>
+          <div className="form-row">
+            <label>餐厅名字</label>
+            <input
+              type="text"
+              value={order.restaurant_name || ''}
+              onChange={(e) => setOrder((o) => ({ ...o, restaurant_name: e.target.value }))}
+              placeholder="如：自由轩、すしざんまい"
+              disabled={busy}
+              style={{ width: 200 }}
+            />
+          </div>
           <div className="form-row">
             <label>第一希望</label>
             <span className="form-inline">
