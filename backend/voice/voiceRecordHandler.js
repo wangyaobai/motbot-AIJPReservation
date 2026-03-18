@@ -57,7 +57,11 @@ export default async function voiceRecordHandler(req, res) {
   const authHeader = getAuthHeader();
   const recordingUri = (recordingUrl || '').replace(/\.(mp3|wav)?$/i, '') + '.mp3';
   const transcribe = lang === 'en' ? transcribeEnFromUrl : transcribeJaFromUrl;
+  const debugTiming = process.env.DEBUG_VOICE === '1';
+  const t0 = debugTiming ? Date.now() : 0;
+
   const lastText = await transcribe(recordingUri, { authHeader });
+  if (debugTiming) console.log(`[voice] ASR ${Date.now() - t0}ms`);
   const emptyFallback = lang === 'en' ? '(silence or unclear)' : '(無音または聞き取れず)';
   callRecords.push({ role: 'restaurant', text_ja: lastText || emptyFallback });
 
@@ -70,7 +74,9 @@ export default async function voiceRecordHandler(req, res) {
     nextReply = { text_ja: cached.text_ja, done: false };
     ttsUrlCached = cached.ttsUrl;
   } else {
+    const t1 = debugTiming ? Date.now() : 0;
     nextReply = await getNextAiReply(order, callRecords, lastText || null);
+    if (debugTiming) console.log(`[voice] LLM ${Date.now() - t1}ms`);
   }
   callRecords.push({ role: 'ai', text_ja: nextReply.text_ja });
 
@@ -95,9 +101,11 @@ export default async function voiceRecordHandler(req, res) {
     return;
   }
 
+  const t2 = debugTiming ? Date.now() : 0;
   const ttsUrl = ttsUrlCached || await (lang === 'en'
     ? synthesizeEnToUrl(nextReply.text_ja, baseUrl)
     : synthesizeJaToUrl(nextReply.text_ja, baseUrl));
+  if (debugTiming) console.log(`[voice] TTS ${Date.now() - t2}ms, total ${Date.now() - t0}ms`);
   if (ttsUrl) {
     twiml.play(ttsUrl);
   } else {

@@ -5,6 +5,8 @@
 
 const DEEPSEEK_API = 'https://api.deepseek.com/chat/completions';
 const OPENAI_MODEL = 'gpt-4o-mini';
+// 加速：短回复仅需 1～2 句，max_tokens 80 足够，减少生成时间
+const MAX_TOKENS = parseInt(process.env.AI_MAX_TOKENS, 10) || 80;
 
 function formatDateJa(ymd) {
   if (!ymd || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return ymd || '';
@@ -83,6 +85,42 @@ function containsChinese(text) {
 }
 
 /**
+ * DeepSeek 流式请求，收集完整回复。可减少首 token 延迟，总时长略优。
+ */
+async function fetchDeepSeekStream(url, headers, body, signal) {
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ ...body, stream: true }),
+    signal,
+  });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let fullContent = '';
+  let buffer = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        const data = line.slice(6).trim();
+        if (data === '[DONE]') return fullContent.trim();
+        try {
+          const json = JSON.parse(data);
+          const delta = json.choices?.[0]?.delta?.content;
+          if (delta) fullContent += delta;
+        } catch {}
+      }
+    }
+  }
+  return fullContent.trim();
+}
+
+/**
  * @param {object} order - 订单行（含 booking_date, booking_time, party_size 等）
  * @param {Array<{role:string, text_ja:string}>} callRecords - 已有对话（ai/restaurant 交替）
  * @param {string|null} lastRestaurantText - 对方（餐厅）最新一句日文（ASR 结果）
@@ -92,19 +130,25 @@ export async function getNextAiReply(order, callRecords = [], lastRestaurantText
   // 自动语言：默认日语；调用方可传入 order._dialogue_lang='en' 或在 callRecords 中加 lang 逻辑（当前用于测试模拟器）
   const forcedLang = (order && order._dialogue_lang) ? String(order._dialogue_lang).toLowerCase() : 'ja';
   const lang = (forcedLang === 'en') ? 'en' : 'ja';
-  const apiKey = process.env.DEEPSEEK_API_KEY || process.env.OPENAI_API_KEY;
+  const preferOpenAI = process.env.AI_USE_OPENAI === '1';
+  const useDeepSeek = !preferOpenAI && !!process.env.DEEPSEEK_API_KEY;
+  const apiKey = useDeepSeek ? process.env.DEEPSEEK_API_KEY : process.env.OPENAI_API_KEY;
   if (!apiKey) {
     return lang === 'en'
       ? { text_ja: 'Sorry, the system is not ready at the moment.', done: true }
       : { text_ja: '申し訳ございません。ただいまシステムの準備ができておりません。', done: true };
   }
 
-  const useDeepSeek = !!process.env.DEEPSEEK_API_KEY;
   const orderCtx = buildOrderContext(order, lang);
 
+  // 加速：仅保留最近 3 轮（6 条）对话，减少输入 token
+  const maxHistory = parseInt(process.env.AI_MAX_HISTORY_TURNS, 10) || 3;
+  const recentRecords = callRecords.length > maxHistory * 2
+    ? callRecords.slice(-maxHistory * 2)
+    : callRecords;
   let historyStr = '';
-  if (callRecords.length > 0) {
-    historyStr = callRecords
+  if (recentRecords.length > 0) {
+    historyStr = recentRecords
       .map((r) => (r.role === 'ai' ? `AI: ${r.text_ja}` : `店: ${r.text_ja}`))
       .join('\n');
   }
@@ -178,8 +222,8 @@ Output only English, no explanations.`;
           { role: 'system', content: lang === 'en' ? systemPromptEn : systemPromptJa },
           { role: 'user', content: userContent },
         ],
-        max_tokens: 500,
-        temperature: 0.3,
+        max_tokens: MAX_TOKENS,
+        temperature: 0.1,
       }
     : {
         model: OPENAI_MODEL,
@@ -187,8 +231,8 @@ Output only English, no explanations.`;
           { role: 'system', content: lang === 'en' ? systemPromptEn : systemPromptJa },
           { role: 'user', content: userContent },
         ],
-        max_tokens: 500,
-        temperature: 0.3,
+        max_tokens: MAX_TOKENS,
+        temperature: 0.1,
       };
 
   const url = useDeepSeek ? DEEPSEEK_API : 'https://api.openai.com/v1/chat/completions';
@@ -196,11 +240,25 @@ Output only English, no explanations.`;
     'Content-Type': 'application/json',
     Authorization: `Bearer ${apiKey}`,
   };
+  const timeoutMs = parseInt(process.env.AI_REQUEST_TIMEOUT_MS, 10) || 15000;
 
   try {
-    const resp = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
-    const data = await resp.json().catch(() => ({}));
-    const raw = (data.choices?.[0]?.message?.content || '').trim();
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), timeoutMs);
+    let raw;
+    if (useDeepSeek && process.env.AI_STREAM === '1') {
+      raw = await fetchDeepSeekStream(url, headers, body, ctrl.signal);
+    } else {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+        signal: ctrl.signal,
+      });
+      const data = await resp.json().catch(() => ({}));
+      raw = (data.choices?.[0]?.message?.content || '').trim();
+    }
+    clearTimeout(to);
     const fallback = lang === 'en' ? 'Thank you. We appreciate your help.' : 'ご確認のほど、よろしくお願いいたします。';
     let textJa = raw.replace(/^["']|["']$/g, '').trim() || fallback;
 
@@ -215,7 +273,15 @@ Output only English, no explanations.`;
         ],
         temperature: 0.1,
       };
-      const resp2 = await fetch(url, { method: 'POST', headers, body: JSON.stringify(strictBody) });
+      const ctrl2 = new AbortController();
+      const to2 = setTimeout(() => ctrl2.abort(), timeoutMs);
+      const resp2 = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(strictBody),
+        signal: ctrl2.signal,
+      });
+      clearTimeout(to2);
       const data2 = await resp2.json().catch(() => ({}));
       const raw2 = (data2.choices?.[0]?.message?.content || '').trim();
       const again = raw2.replace(/^["']|["']$/g, '').trim();

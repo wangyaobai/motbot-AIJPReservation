@@ -69,6 +69,18 @@ if (process.env.NODE_ENV === 'production' && fs.existsSync(frontendDist)) {
 const PORT = parseInt(process.env.PORT, 10) || 3000;
 const MAX_TRY = 10;
 
+function startWarmNlsToken() {
+  setImmediate(async () => {
+    try {
+      const { getNlsToken } = await import('./services/aliyunNlsToken.js');
+      const t = await getNlsToken();
+      if (t) console.log('[warm] NLS Token 已预热');
+    } catch (e) {
+      // 未配置阿里云时静默跳过
+    }
+  });
+}
+
 function startWarmRecommendations(port) {
   setImmediate(async () => {
     console.log('[warm] 开始构建预加载（每城最多 10 家有封面图：历史+精修+DeepSeek）…');
@@ -92,6 +104,7 @@ function tryListen(port, attempt = 0) {
   }
   const server = app.listen(port, () => {
     console.log(`Server running on port ${port}`);
+    startWarmNlsToken();
     if (port !== PORT) {
       console.warn(`前端代理请指向: http://localhost:${port}（修改 frontend/vite.config.js 的 proxy["/api"].target）`);
     }
