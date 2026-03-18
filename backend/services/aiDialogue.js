@@ -175,6 +175,8 @@ export async function getNextAiReply(order, callRecords = [], lastRestaurantText
 禁止：1) 一段对话中不要突然切换语言（如之前都是英文突然变日语）；2) 餐厅没有提到预约定金时，不要主动提发链接；3) 预约成功/失败的短信由 aireservation 平台发送，无需餐厅发送，不要提让餐厅发确认短信；4) 不要身份转变——始终是代客预约方，不要扮演餐厅服务员。
 
 根据对话历史与对方最新回复，生成下一句日语回复。若对方已确认预约则感谢并结束；若满席则礼貌结束。
+9. 预约成功判定：只有对方明确肯定（如 かしこまりました、承知しました、予約できました、オッケー、大丈夫です 等）才能感谢并结束。若对方回应模糊（如「検討します」「後で連絡」等），不要当作成功结束，应礼貌请求确认或说明稍后再联系。
+
 只输出一句日语，不要中文、不要解释。`;
 
   const systemPromptEn = `You are an AI assistant calling a restaurant to make a reservation on behalf of a customer.
@@ -196,6 +198,8 @@ Fixed policy (must follow):
 Forbidden: 1) Do NOT switch mid-conversation (e.g. from English to Japanese); 2) Do NOT proactively mention payment links when the restaurant has not brought up deposit/prepayment; 3) Reservation success/failure SMS is sent by the aireservation platform, not the restaurant—do NOT ask the restaurant to send confirmation SMS; 4) Do NOT switch identities—you are always the customer's booking agent, never play the role of restaurant staff.
 
 Generate the next polite reply based on the dialogue history. If restaurant confirms, thank and end. If fully booked, politely end.
+9. Success判定：Only when the restaurant gives explicit confirmation (e.g. sure, ok, confirmed, reserved, no problem) can you thank and end. If the response is ambiguous (e.g. "we'll try", "call back later"), do NOT treat as success—ask for clarification or say you will call back.
+
 Output only English, no explanations.`;
 
   const firstMessageInstructionJa = `请根据上述订单信息，生成电话接通后的「首句」日语开场白，要求：
@@ -295,24 +299,25 @@ Output only English, no explanations.`;
 
     let done = false;
     let call_result;
-    const lower = textJa.toLowerCase();
-    if (lang === 'ja' && /ありがとう|失礼いたします|承知|かしこまりました/.test(textJa) && lastRestaurantText) {
-      if (/いっぱい|満席|無理|できません/.test(lastRestaurantText)) {
-        done = true;
-        call_result = 'full';
-      } else {
-        done = true;
-        call_result = 'success';
-      }
-    }
+    const lastText = (lastRestaurantText || '').trim();
+    const hasFull = lang === 'ja' ? /いっぱい|満席|無理|できません/.test(lastText) : /(fully booked|no availability|unavailable|sold out)/i.test(lastText);
+    const hasPositive = lang === 'ja'
+      ? /かしこまりました|承知しました|予約できました|オッケー|大丈夫です|承知|了解|はい.*大丈夫|^はい$|^オッケー$/i.test(lastText)
+      : /(sure|ok|confirmed|reserved|yes|alright|no problem|sounds good|we can do that)/i.test(lastText);
+    const aiEnding = lang === 'ja'
+      ? /ありがとう|失礼いたします|承知|かしこまりました/.test(textJa)
+      : /(thank you|thanks|goodbye|have a (nice|great) day)/i.test(textJa);
 
-    if (lang === 'en' && /(thank you|thanks|goodbye|have a (nice|great) day)/i.test(textJa) && lastRestaurantText) {
-      if (/(fully booked|no availability|unavailable|sold out)/i.test(lastRestaurantText)) {
+    if (aiEnding && lastText) {
+      if (hasFull) {
         done = true;
         call_result = 'full';
-      } else {
+      } else if (hasPositive) {
         done = true;
         call_result = 'success';
+      } else {
+        done = true;
+        call_result = 'retry';
       }
     }
 
