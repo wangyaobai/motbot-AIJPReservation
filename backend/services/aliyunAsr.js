@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { spawn } from 'child_process';
 import { getNlsToken } from './aliyunNlsToken.js';
 
 const REGION = process.env.ALIYUN_REGION || 'cn-shanghai';
@@ -44,6 +45,36 @@ async function downloadToBuffer(recordingUrl, authHeader) {
 }
 
 /**
+ * 使用 ffmpeg 将音频转为 16000Hz 单声道，以兼容阿里云 ASR（仅支持 8000/16000Hz）。
+ * Twilio MP3 录音常为 22050Hz，直接上传会报 40000009。
+ */
+async function resampleTo16k(buf) {
+  const inPath = path.join(tmpDir, `asr-in-${Date.now()}.mp3`);
+  const outPath = path.join(tmpDir, `asr-out-${Date.now()}.mp3`);
+  try {
+    fs.writeFileSync(inPath, buf);
+    await new Promise((resolve, reject) => {
+      const proc = spawn('ffmpeg', [
+        '-y', '-i', inPath,
+        '-ar', '16000', '-ac', '1',
+        '-f', 'mp3', outPath,
+      ], { stdio: ['ignore', 'pipe', 'pipe'] });
+      let err = '';
+      proc.stderr?.on('data', (d) => { err += d.toString(); });
+      proc.on('close', (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(`ffmpeg exit ${code}: ${err.slice(-200)}`));
+      });
+    });
+    const out = fs.readFileSync(outPath);
+    return out;
+  } finally {
+    try { fs.unlinkSync(inPath); } catch {}
+    try { fs.unlinkSync(outPath); } catch {}
+  }
+}
+
+/**
  * 一句话识别：上传二进制音频，返回日文文本。
  * 支持格式：PCM、WAV、MP3、AAC 等；采样率 8000/16000。
  */
@@ -63,10 +94,18 @@ export async function transcribeFromUrl(recordingUrl, options = {}) {
 
   const authHeader = options.authHeader || null;
   const format = (options.format || 'mp3').toLowerCase();
-  const sampleRate = String(options.sample_rate || '16000');
+  let sampleRate = String(options.sample_rate || '16000');
 
   try {
-    const buf = await downloadToBuffer(recordingUrl, authHeader);
+    let buf = await downloadToBuffer(recordingUrl, authHeader);
+    // Twilio MP3 常为 22050Hz，阿里云 ASR 仅支持 8000/16000，需 ffmpeg 重采样
+    try {
+      buf = await resampleTo16k(buf);
+      sampleRate = '16000';
+    } catch (e) {
+      console.warn('[aliyunAsr] resample failed, skip ASR (install ffmpeg on server):', e.message);
+      return '';
+    }
     const token = await getNlsToken();
     if (!token) {
       console.warn('[aliyunAsr] 未获取到 NLS Token，请配置 ALIYUN_ACCESS_KEY_ID / ALIYUN_ACCESS_KEY_SECRET');
