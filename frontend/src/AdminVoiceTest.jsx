@@ -232,14 +232,6 @@ export function AdminVoiceTest({ apiBase = API }) {
             style={{ width: 200 }}
           />
         </div>
-        <div className="form-row">
-          <label>通话语言</label>
-          <select value={lang} onChange={(e) => setLang(e.target.value)} disabled={busy}>
-            <option value="ja">日语</option>
-            <option value="en">英语</option>
-          </select>
-        </div>
-
         <div className="admin-voice-test-section">
           <h4>预约信息（与用户端一致）</h4>
           <div className="form-row">
