@@ -641,7 +641,10 @@ a.link-btn:hover {
 .dialogue-bubbles .bubble-restaurant { background: #f0f4f8; border-left: 4px solid #64748b; }
 .dialogue-bubbles .bubble-ai { background: #e0f2fe; border-left: 4px solid #0284c7; }
 .dialogue-bubbles .bubble-role { display: block; font-size: 0.75rem; color: #666; margin-bottom: 4px; font-weight: 600; }
-.dialogue-bubbles .bubble-text { font-size: 0.95rem; }
+.dialogue-bubbles .bubble-text { font-size: 0.95rem; display: block; margin-bottom: 6px; }
+.dialogue-bubbles .bubble-play { padding: 4px 10px; font-size: 0.8rem; background: #0284c7; color: #fff; border: none; border-radius: 6px; cursor: pointer; }
+.dialogue-bubbles .bubble-play:hover { background: #0369a1; }
+.dialogue-audio-label { font-size: 0.85rem; color: #666; margin-bottom: 6px; }
 
 .admin-query {
   width: 100%;

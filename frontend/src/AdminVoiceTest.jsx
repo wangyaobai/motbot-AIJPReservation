@@ -97,7 +97,6 @@ export function AdminVoiceTest({ apiBase = API }) {
     if (!ttsUrl || !audioRef.current) return;
     const el = audioRef.current;
     const onEnd = () => {
-      setTtsUrl('');
       playResolveRef.current?.resolve();
       playResolveRef.current = null;
     };
@@ -114,6 +113,18 @@ export function AdminVoiceTest({ apiBase = API }) {
       playResolveRef.current = null;
     });
   }, [ttsUrl]);
+
+  const handleReplay = async (aiText) => {
+    if (!aiText?.trim()) return;
+    setErr('');
+    const lang = langMode === 'auto' ? detectLang(aiText) : langMode;
+    try {
+      const url = await fetchTts(aiText, lang);
+      setTtsUrl(url);
+    } catch (e) {
+      setErr(e.message || 'TTS 失败');
+    }
+  };
 
   const runRound = async (userText) => {
     if (!userText?.trim()) return;
@@ -177,10 +188,14 @@ export function AdminVoiceTest({ apiBase = API }) {
           });
           const data = await res.json();
           if (!data.ok) throw new Error(data.message || 'ASR 失败');
-          const txt = data.text || '';
+          const txt = (data.text || '').trim();
           setAsrResult(txt);
           setInputText(txt);
-          setStatus('idle');
+          if (txt) {
+            runRound(txt);
+          } else {
+            setStatus('idle');
+          }
         } catch (e) {
           setErr(e.message || 'ASR 失败');
           setStatus('idle');
@@ -420,6 +435,7 @@ export function AdminVoiceTest({ apiBase = API }) {
           />
           {ttsUrl && (
             <div className="dialogue-audio">
+              <p className="dialogue-audio-label">AI 语音回复（可重复播放）</p>
               <audio ref={audioRef} src={ttsUrl} controls />
             </div>
           )}
@@ -445,6 +461,11 @@ export function AdminVoiceTest({ apiBase = API }) {
                 <div key={i} className={`bubble ${r.role === 'ai' ? 'bubble-ai' : 'bubble-restaurant'}`}>
                   <span className="bubble-role">{r.role === 'ai' ? 'AI' : '餐厅'}</span>
                   <span className="bubble-text">{r.text_ja}</span>
+                  {r.role === 'ai' && (
+                    <button type="button" className="bubble-play" onClick={() => handleReplay(r.text_ja)} title="重新播放">
+                      ▶ 播放
+                    </button>
+                  )}
                 </div>
               ))}
             </div>

@@ -113,39 +113,45 @@ export async function getNextAiReply(order, callRecords = [], lastRestaurantText
 订单信息：${orderCtx}
 
 重要：你的回复必须全部为日语，禁止出现中文或英文（专有名词除外）。输出将直接用于日语 TTS 朗读。
-重要规则（固定策略）：
-- 若对方提到需要「予約金／デポジット／事前決済／前払い」等预付费用：请你请求对方将线上支付链接发送到订单中的「连络先（SMS等）」号码；并说明国际顾客线上支付可能不便，礼貌询问是否可以通融「到店支付／当日支払い／店頭決済」。不要编造支付链接或金额。
+每次回复尽量简短（1～2 句），不要一次说太多。
 
-请根据当前对话历史与对方最新回复，生成你方下一句日语回复（简短礼貌）。
-若对方已明确表示「可以预约」「承知しました」「かしこまりました」等，则回复感谢并结束。
-若对方表示「满席」「いっぱい」「その時間は無理」等，则礼貌结束。
-若对方在询问细节，则用日语简要确认订单内容。
+固定策略（必须遵守）：
+1. 身份：一开始务必说明是「帮客人预约」的。
+2. 首句：只说第一希望日期、时间、人数。不要提第二希望、饮食、套餐等。
+3. 若对方说满席/不可用：再礼貌提出第二希望日期时间。
+4. 若对方说时间 OK：再强调饮食禁忌（若有）。
+5. 若对方问套餐：默认「餐厅推荐套餐」；若订单备注有写具体套餐，则按用户写的沟通。
+6. 若对方要求预付/定金：礼貌争取「到店支付」；若不行则请对方将支付链接发短信到订单中的连络电话。不要编造链接或金额。
+
+根据对话历史与对方最新回复，生成下一句日语回复。若对方已确认预约则感谢并结束；若满席则礼貌结束。
 只输出一句日语，不要中文、不要解释。`;
 
   const systemPromptEn = `You are an AI assistant calling a restaurant to make a reservation on behalf of a customer.
 Order details: ${orderCtx}
 
 Important: your reply must be ONLY in English. It will be used for English TTS playback.
-If the restaurant asks for the customer's phone number (e.g., where to send a payment link), you MUST answer with the provided contact phone from the order details. Never output placeholders like "[insert ...]".
-Fixed policy:
-- If the restaurant says a reservation deposit / prepayment is required, ask them to send the online payment link to the contact phone in the order details, and politely request whether, since this is an international guest, it would be possible to pay in person at the restaurant instead. Do NOT invent payment links or amounts.
+Keep each reply SHORT (1-2 sentences). Do not dump everything at once.
 
-Generate the next polite reply based on the dialogue history and the restaurant's latest response.
-If the restaurant clearly confirms the reservation, thank them and end the call.
-If they say it's fully booked or unavailable, politely end the call.
-If they ask for details, confirm the reservation details briefly.
+Fixed policy (must follow):
+1. Identity: clearly state you are calling to help a customer make a reservation.
+2. First message: only say first choice date, time, and party size. Do NOT mention second choice, dietary, or menu.
+3. If restaurant says full/unavailable: then politely offer second choice date/time.
+4. If restaurant says time OK: then emphasize dietary restrictions (if any).
+5. If restaurant asks about menu/set: default to "restaurant's recommended"; if order remarks specify something, use that.
+6. If restaurant requires deposit/prepayment: politely request pay at restaurant; if not possible, ask them to send payment link via SMS to the contact phone in the order. Do NOT invent links or amounts.
+
+Generate the next polite reply based on the dialogue history. If restaurant confirms, thank and end. If fully booked, politely end.
 Output only English, no explanations.`;
 
   const firstMessageInstructionJa = `请根据上述订单信息，生成电话接通后的「首句」日语开场白，要求：
-1. 先有自然问候（如 お電話ありがとうございます、お忙しいところ失礼します 等），再说明是代客预约。
-2. 必须包含：第一希望日期与时间；若订单有第二希望则说明第二希望日期时间；人数（大人・儿童分开写若有儿童）；若订单有饮食注意/忌口则用日语说明；若订单有其他备注则简要说明；结尾礼貌语（如 よろしくお願いいたします）。
-3. 语气自然、适合电话朗读，可分成 2～4 句，整段全部为日语。`;
+1. 先自然问候（如 お電話ありがとうございます），再明确说明：お客様のご予約を代行してお電話しております（帮客人预约）。
+2. 只包含：第一希望日期、时间、人数。不要提第二希望、饮食、套餐等。
+3. 简短礼貌，1～2 句，全部日语。`;
 
-  const firstMessageInstructionEn = `Create the English opening message after the call is answered (2-4 sentences):
-1) Start with a natural greeting and brief introduction (calling on behalf of a customer).
-2) Must include: first choice date/time; second choice if provided; party size (adults/children); dietary restrictions if any; other remarks if any.
-3) If mentioning contact details, use the provided contact phone from the order details (do NOT use placeholders).
-4) End politely (e.g., Thank you, we appreciate your help.). Output ONLY English.`;
+  const firstMessageInstructionEn = `Create the English opening message after the call is answered. Requirements:
+1) Natural greeting, then clearly state: you are calling to help a customer make a reservation.
+2) Include ONLY: first choice date, time, and party size. Do NOT mention second choice, dietary, or menu.
+3) Keep it short and polite, 1-2 sentences. Output ONLY English.`;
 
   const userContent = lastRestaurantText
     ? (lang === 'en'
