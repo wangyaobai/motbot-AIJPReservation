@@ -192,7 +192,7 @@ export function AdminShops({ apiBase }) {
 
   return (
     <div className="admin-shops">
-      <nav className="admin-shops-subtabs">
+      <nav className="admin-subtabs">
         <button
           type="button"
           className={subTab === 'fallback' ? 'active' : ''}
@@ -213,17 +213,19 @@ export function AdminShops({ apiBase }) {
 
       {subTab === 'fallback' && (
         <div className="admin-shops-fallback">
-          <p className="admin-shops-desc">
+          <p className="admin-desc">
             兜底店铺为 refresh 前的备份数据，可管理封面和店铺信息。首次使用请先点击「备份当前到兜底」。
           </p>
-          <div className="admin-media-actions">
-            <button type="button" className="btn-primary" onClick={runBackup}>
-              备份当前到兜底
-            </button>
-            <button type="button" className="btn-refresh" onClick={fetchAll}>
-              刷新
-            </button>
-            {backupMsg && <span style={{ marginLeft: 8, color: '#059669' }}>{backupMsg}</span>}
+          <div className="admin-panel">
+            <div className="admin-actions">
+              <button type="button" className="btn-primary" onClick={runBackup}>
+                备份当前到兜底
+              </button>
+              <button type="button" className="btn-ghost" onClick={fetchAll}>
+                刷新
+              </button>
+              {backupMsg && <span className="admin-msg-success">{backupMsg}</span>}
+            </div>
           </div>
           {fallbackItems.map((g) => (
             <div key={g.cityKey} className="admin-media-city">
@@ -239,7 +241,7 @@ export function AdminShops({ apiBase }) {
                     const phone = phoneByKey[key] ?? r.phone ?? '';
                     const saving = savingKey === key;
                     return (
-                      <li key={key} className="admin-media-row" style={{ flexWrap: 'wrap' }}>
+                      <li key={key} className="admin-media-row">
                         <div className="admin-media-thumb">
                           <img src={r.image || FALLBACK_IMG} alt="" />
                         </div>
@@ -250,17 +252,19 @@ export function AdminShops({ apiBase }) {
                             placeholder="地址"
                             value={addr}
                             onChange={(e) => setAddrByKey((p) => ({ ...p, [key]: e.target.value }))}
-                            style={{ width: '100%', marginTop: 4, padding: 4, fontSize: 12 }}
+                            className="admin-media-input"
+                            style={{ width: '100%', marginTop: 4, minWidth: 0 }}
                           />
                           <input
                             type="text"
                             placeholder="电话"
                             value={phone}
                             onChange={(e) => setPhoneByKey((p) => ({ ...p, [key]: e.target.value }))}
-                            style={{ width: '100%', marginTop: 4, padding: 4, fontSize: 12 }}
+                            className="admin-media-input"
+                            style={{ width: '100%', marginTop: 4, minWidth: 0 }}
                           />
                         </div>
-                        <div className="admin-media-form" style={{ flex: '1 1 100%' }}>
+                        <div className="admin-media-form">
                           <input
                             type="text"
                             placeholder="封面 URL"
@@ -299,13 +303,15 @@ export function AdminShops({ apiBase }) {
 
       {subTab === 'crawled' && (
         <div className="admin-shops-crawled">
-          <p className="admin-shops-desc">
+          <p className="admin-desc">
             新爬取数据来自 Tabelog/Wikidata，缺封面的可在此补填。人工确认后进入前端展示。
           </p>
-          <div className="admin-media-actions">
-            <button type="button" className="btn-refresh" onClick={fetchAll}>
-              刷新
-            </button>
+          <div className="admin-panel">
+            <div className="admin-actions">
+              <button type="button" className="btn-ghost" onClick={fetchAll}>
+                刷新
+              </button>
+            </div>
           </div>
           {crawledItems.map((g) => (
             <div key={g.cityKey} className="admin-media-city">
@@ -324,7 +330,7 @@ export function AdminShops({ apiBase }) {
                 <p className="admin-media-empty">暂无爬取数据，请运行 npm run refresh-crawlers</p>
               ) : (
                 <>
-                  <div className="admin-media-actions" style={{ marginBottom: 8 }}>
+                  <div className="admin-actions" style={{ marginBottom: 8 }}>
                     <button
                       type="button"
                       className="btn-primary"

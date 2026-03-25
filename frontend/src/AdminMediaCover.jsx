@@ -237,7 +237,7 @@ export function AdminMediaCover({ apiBase = API }) {
     return (
       <div className="admin-media-cover">
         {err ? (
-          <p className="admin-media-empty" style={{ color: 'var(--text-muted)', whiteSpace: 'pre-wrap' }}>{err}</p>
+          <p className="admin-media-empty" style={{ whiteSpace: 'pre-wrap' }}>{err}</p>
         ) : (
           <p className="admin-media-empty">当前没有需要填写封面图的餐厅。</p>
         )}
@@ -248,72 +248,42 @@ export function AdminMediaCover({ apiBase = API }) {
 
   return (
     <div className="admin-media-cover">
-      <p className="admin-media-summary">
+      <p className="admin-desc">
         {total > 0 ? `共 ${total} 家餐厅可补充封面。` : '下方为各城市；暂无数据的城市请先访问首页对应 Tab 或运行 warm 脚本生成数据。'}
         不足 10 家的城市会列出该城全部未填手动图的店（包括“有链接但前端可能加载失败”的图源），可粘贴外链，或使用「上传图片」存到服务器（避免外链失效）。
       </p>
       {err && <p className="form-error">{err}</p>}
-      <div className="admin-media-actions">
-        <button
-          type="button"
-          className="btn-primary"
-          disabled={refining}
-          onClick={runRefine}
-        >
-          {refining ? '提交中…' : '用特色/菜名自动补齐封面图'}
-        </button>
-        <button type="button" className="btn-refresh" onClick={fetchList} disabled={loading}>
-          {loading ? '加载中…' : '刷新列表'}
-        </button>
-        <span style={{ marginLeft: 8 }}>
-          <input
-            type="password"
-            placeholder="Admin Token（用于下方本地化）"
-            value={adminToken}
-            onChange={(e) => setAdminToken(e.target.value)}
-            style={{ width: 180, marginRight: 6, padding: '4px 8px' }}
-          />
-          <button
-            type="button"
-            className="btn-primary"
-            disabled={localizing}
-            onClick={runLocalize}
-          >
-            {localizing ? '本地化中…' : '将已填外链封面下载到服务器'}
+      <div className="admin-panel">
+        <div className="admin-actions">
+          <button type="button" className="btn-primary" disabled={refining} onClick={runRefine}>
+            {refining ? '提交中…' : '自动补齐封面图'}
           </button>
-        </span>
-      </div>
-      {refineMsg && <p className="admin-media-refine-msg">{refineMsg}</p>}
-      {localizeMsg && <p className="admin-media-refine-msg">{localizeMsg}</p>}
-
-      <div className="admin-media-actions" style={{ marginTop: 12 }}>
-        <button
-          type="button"
-          className="btn-primary"
-          disabled={dupLoading}
-          onClick={() => fetchDuplicates()}
-          title="找出所有 manual_image_url 指向同一个 best...webp 的餐厅（历史覆盖导致串图）"
-        >
-          {dupLoading ? '查询重复中…' : '查找重复 best 封面（串图排查）'}
-        </button>
-        <button
-          type="button"
-          className="btn-refresh"
-          disabled={dupLoading}
-          onClick={() => fetchDuplicates({ url: '/api/manual-covers/best________.webp' })}
-          title="只查 best________.webp 这一张"
-          style={{ marginLeft: 8 }}
-        >
-          {dupLoading ? '查询中…' : '只查 best________.webp'}
-        </button>
+          <button type="button" className="btn-ghost" onClick={fetchList} disabled={loading}>
+            {loading ? '加载中…' : '刷新列表'}
+          </button>
+          <input type="password" placeholder="Admin Token" value={adminToken} onChange={(e) => setAdminToken(e.target.value)} className="admin-media-input" style={{ minWidth: 140, flex: '0 1 180px' }} />
+          <button type="button" className="btn-outline" disabled={localizing} onClick={runLocalize}>
+            {localizing ? '本地化中…' : '外链封面本地化'}
+          </button>
+        </div>
+        {refineMsg && <p className="admin-msg">{refineMsg}</p>}
+        {localizeMsg && <p className="admin-msg">{localizeMsg}</p>}
+        <div className="admin-actions">
+          <button type="button" className="btn-outline" disabled={dupLoading} onClick={() => fetchDuplicates()} title="找出重复封面">
+            {dupLoading ? '查询重复中…' : '查找重复封面（串图排查）'}
+          </button>
+          <button type="button" className="btn-ghost" disabled={dupLoading} onClick={() => fetchDuplicates({ url: '/api/manual-covers/best________.webp' })}>
+            {dupLoading ? '查询中…' : '只查 best________.webp'}
+          </button>
+        </div>
       </div>
       {dupErr && <p className="form-error">{dupErr}</p>}
       {dupGroups && dupGroups.length > 0 && (
-        <div className="admin-media-city" style={{ marginTop: 10 }}>
+        <div className="admin-media-city">
           <h3>重复封面排查（共 {dupGroups.length} 组）</h3>
           {dupGroups.map((g) => (
-            <div key={g.manual_image_url} style={{ margin: '10px 0', padding: 10, border: '1px solid rgba(0,0,0,0.08)', borderRadius: 10 }}>
-              <div style={{ marginBottom: 8, wordBreak: 'break-all' }}>
+            <div key={g.manual_image_url} className="admin-panel" style={{ padding: 14 }}>
+              <div className="admin-media-feature" style={{ marginBottom: 8, wordBreak: 'break-all' }}>
                 <strong>URL：</strong>{g.manual_image_url}（重复 {g.cnt}）
               </div>
               <ul className="admin-media-list">

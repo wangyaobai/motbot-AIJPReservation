@@ -287,10 +287,10 @@ export function AdminQuery({ apiBase }) {
                             return parts.length === 1 && typeof parts[0] === 'string' ? parts[0] : parts;
                           };
                           return (
-                            <ul className="ai-call-log" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                            <ul className="ai-call-log">
                               {logList.map((entry, i) => (
-                                <li key={i} style={{ marginBottom: 6, fontSize: '0.9em' }}>
-                                  <span style={{ color: 'var(--text-muted)', marginRight: 8 }}>{formatLocalDateTime(entry.at)}</span>
+                                <li key={i}>
+                                  <span className="ai-call-log-time">{formatLocalDateTime(entry.at)}</span>
                                   {renderLogText(entry.text)}
                                 </li>
                               ))}
@@ -307,7 +307,7 @@ export function AdminQuery({ apiBase }) {
                               ? `${detailOrder.ai_call_status_type === 'not_open' ? '餐厅尚未营业' : '系统排队中'}，预计${formatEstimateJst(detailOrder.ai_call_est_at)}（日本时间）开始拨打，请您耐心等待。`
                               : (detailOrder.ai_call_status_text || '-')}
                             {detailOrder.ai_call_status_updated_at && (
-                              <span style={{ display: 'block', marginTop: 4, fontSize: 0.9, color: 'var(--text-muted)' }}>
+                              <span className="ai-call-log-time" style={{ display: 'block', marginTop: 4 }}>
                                 更新时间：{formatLocalDateTime(detailOrder.ai_call_status_updated_at)}
                               </span>
                             )}
@@ -323,7 +323,7 @@ export function AdminQuery({ apiBase }) {
                 <dd>
                   <span>{detailOrder.sms_sent ? '已发送' : '未发送'}</span>
                   {(detailOrder.sms_body || (detailOrder.sms_sent && detailOrder.summary_text)) ? (
-                    <div style={{ marginTop: 6, padding: 8, background: 'var(--bg-secondary, #f5f5f5)', borderRadius: 6, fontSize: '0.9em', whiteSpace: 'pre-wrap' }}>
+                    <div className="sms-preview">
                       {detailOrder.sms_body || `【日本餐厅预约】您的预约通话已完成。摘要：${detailOrder.summary_text || ''}`}
                     </div>
                   ) : null}
@@ -341,29 +341,29 @@ export function AdminQuery({ apiBase }) {
 
       {detailOrder && detailSubModal === 'ai-record' && (
         <div className="modal-overlay" style={{ zIndex: 1001 }} onClick={() => setDetailSubModal(null)}>
-          <div className="modal-content" style={{ maxWidth: 480, maxHeight: '85vh', overflow: 'auto' }} onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3>AI沟通记录</h3>
               <button type="button" className="modal-close" onClick={() => setDetailSubModal(null)}>×</button>
             </div>
-            <div className="modal-body" style={{ padding: 16 }}>
-              <p style={{ marginBottom: 12, color: 'var(--text-muted)', fontSize: '0.9em' }}>以下为 AI 与餐厅通话内容转写（日语+中文）。</p>
+            <div className="modal-body">
+              <p className="admin-desc">以下为 AI 与餐厅通话内容转写（日语+中文）。</p>
               <section style={{ marginBottom: 16 }}>
-                <h4 style={{ fontSize: '0.95em', marginBottom: 8 }}>沟通对话</h4>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <h4 className="admin-panel-title" style={{ marginBottom: 10 }}>沟通对话</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {getDialogue(detailOrder).map((line, i) => (
-                    <div key={i} style={{ padding: 8, borderRadius: 8, background: line.role === 'ai' ? '#f0f7ff' : '#f5f5f5', borderLeft: `3px solid ${line.role === 'ai' ? '#1890ff' : '#999'}` }}>
-                      <div style={{ fontSize: '0.8em', color: 'var(--text-muted)', marginBottom: 4 }}>{line.role === 'ai' ? 'AI' : '餐厅'}</div>
-                      <p style={{ margin: 0, fontSize: '0.9em', lineHeight: 1.5 }}>{line.ja}</p>
-                      <p style={{ margin: '4px 0 0', fontSize: '0.85em', color: 'var(--text-muted)' }}>{line.zh}</p>
+                    <div key={i} className={`dialogue-bubble ${line.role === 'ai' ? 'dialogue-bubble-ai' : 'dialogue-bubble-restaurant'}`}>
+                      <div className="dialogue-bubble-role">{line.role === 'ai' ? 'AI' : '餐厅'}</div>
+                      <p className="dialogue-bubble-ja">{line.ja}</p>
+                      <p className="dialogue-bubble-zh">{line.zh}</p>
                     </div>
                   ))}
                 </div>
               </section>
               {detailOrder.summary_text && (
                 <section style={{ marginBottom: 16 }}>
-                  <h4 style={{ fontSize: '0.95em', marginBottom: 8 }}>通话摘要</h4>
-                  <p style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6, fontSize: '0.9em' }}>{detailOrder.summary_text}</p>
+                  <h4 className="admin-panel-title" style={{ marginBottom: 10 }}>通话摘要</h4>
+                  <p style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6, fontSize: '0.875rem' }}>{detailOrder.summary_text}</p>
                 </section>
               )}
               {detailOrder.recording_url && (
@@ -376,12 +376,12 @@ export function AdminQuery({ apiBase }) {
 
       {detailOrder && detailSubModal === 'voucher' && (
         <div className="modal-overlay" style={{ zIndex: 1001 }} onClick={() => setDetailSubModal(null)}>
-          <div className="modal-content" style={{ maxWidth: 480, maxHeight: '85vh', overflow: 'auto' }} onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3>预约凭证</h3>
               <button type="button" className="modal-close" onClick={() => setDetailSubModal(null)}>×</button>
             </div>
-            <div className="modal-body" style={{ padding: 16 }}>
+            <div className="modal-body">
               {(() => {
                 const o = detailOrder;
                 const party = o.party_size ?? 0;
@@ -389,38 +389,36 @@ export function AdminQuery({ apiBase }) {
                 const jpTime = toJpTime(o.booking_time);
                 const jpSentence = `こんにちは、${jpDate}の${jpTime || ''}に${party}名で予約しています。`;
                 const cnSentence = `您好，我预订了${o.booking_date || ''} ${o.booking_time || ''}的${party}人位。`;
-                const labelGray = { fontSize: '0.9em', color: 'var(--text-muted)', marginBottom: 4 };
-                const valueBold = { fontSize: '1em', fontWeight: 700, color: '#2d2d2d', margin: 0 };
                 return (
-                  <div className="card card-shadow" style={{ padding: 20, borderRadius: 12 }}>
-                    <h2 style={{ fontSize: '1.1em', fontWeight: 700, textAlign: 'center', marginBottom: 12 }}>予約情報</h2>
-                    <div style={{ height: 10, background: '#e0e0e0', margin: '12px 0' }} />
-                    <div style={{ marginBottom: 12 }}>
-                      <h3 style={{ fontSize: '1em', fontWeight: 700, marginBottom: 4 }}>予約情報</h3>
-                      <p style={labelGray}>{jpSentence}</p>
-                      <p style={labelGray}>{cnSentence}</p>
+                  <div className="voucher-card">
+                    <h2 className="voucher-card h2">予約情報</h2>
+                    <div className="voucher-divider" />
+                    <div style={{ marginBottom: 14 }}>
+                      <p className="voucher-label">{jpSentence}</p>
+                      <p className="voucher-label">{cnSentence}</p>
                     </div>
-                    <div style={{ height: 7, background: '#e8e8e8', margin: '12px 0' }} />
-                    <h2 style={{ fontSize: '1.1em', fontWeight: 700, marginBottom: 4 }}>{o.restaurant_name || '—'}</h2>
-                    <p style={{ ...labelGray, marginBottom: 12 }}>{o.restaurant_name_zh || o.restaurant_name || ''}</p>
-                    <div style={{ marginBottom: 12 }}>
-                      <h3 style={{ fontSize: '1em', fontWeight: 700 }}>住所 {o.restaurant_address || '—'}</h3>
-                      <p style={labelGray}>{o.restaurant_address_zh || o.restaurant_address || ''}</p>
+                    <div className="voucher-divider" />
+                    <p className="voucher-value" style={{ fontSize: '1.05rem', marginBottom: 4 }}>{o.restaurant_name || '—'}</p>
+                    <p className="voucher-label" style={{ marginBottom: 14 }}>{o.restaurant_name_zh || o.restaurant_name || ''}</p>
+                    <div style={{ marginBottom: 14 }}>
+                      <p className="voucher-label">住所</p>
+                      <p className="voucher-value">{o.restaurant_address || '—'}</p>
+                      <p className="voucher-label">{o.restaurant_address_zh || o.restaurant_address || ''}</p>
                     </div>
-                    <div style={{ height: 7, background: '#e8e8e8', margin: '12px 0' }} />
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px 24px', marginBottom: 12 }}>
+                    <div className="voucher-divider" />
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '14px 24px', marginBottom: 14 }}>
                       <div>
-                        <p style={labelGray}>予約名（预约人信息）</p>
-                        <p style={valueBold}>{o.contact_name || '—'}</p>
+                        <p className="voucher-label">予約名（预约人）</p>
+                        <p className="voucher-value">{o.contact_name || '—'}</p>
                       </div>
                       <div>
-                        <p style={labelGray}>人数（人数）</p>
-                        <p style={valueBold}>{party}人</p>
+                        <p className="voucher-label">人数</p>
+                        <p className="voucher-value">{party}人</p>
                       </div>
                     </div>
                     <div>
-                      <p style={labelGray}>予約電話番号（预约电话）</p>
-                      <p style={valueBold}>{o.contact_phone || '—'}</p>
+                      <p className="voucher-label">予約電話番号（预约电话）</p>
+                      <p className="voucher-value">{o.contact_phone || '—'}</p>
                     </div>
                   </div>
                 );
