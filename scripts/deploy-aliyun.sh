@@ -13,6 +13,9 @@ cd "$PROJECT_DIR"
 echo "==> git pull"
 git pull origin main
 
+echo "==> 安装 backend 依赖（确保 twilio 等已安装）"
+cd backend && npm ci && cd ..
+
 echo "==> npm run build"
 npm run build
 
