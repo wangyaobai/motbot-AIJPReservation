@@ -1,10 +1,10 @@
 /**
- * 多轮通话：Record 结束后的回调。对录音做 ASR → 更新 call_records → LLM 下一句 → TTS → 返回 Play+Record 或挂断。
- * 优先使用预生成缓存（首句），避免 502。
+ * Twilio Gather 模式：利用 Twilio 内置语音识别替代 Record+下载+ffmpeg+ASR。
+ * Gather 回调直接提供 SpeechResult 文本 → LLM → TTS → 返回 Gather(Play) 继续监听。
+ * 通过 USE_TWILIO_GATHER=1 启用。
  */
 import twilio from 'twilio';
 import { getDb } from '../db.js';
-import { transcribeJaFromUrl, transcribeEnFromUrl } from '../services/aliyunAsr.js';
 import { getNextAiReply } from '../services/aiDialogue.js';
 import { synthesizeJaToUrl, synthesizeEnToUrl } from '../services/aliyunTts.js';
 import { get as getFirstMessageCache, remove as removeFirstMessageCache } from '../services/firstMessageCache.js';
@@ -20,23 +20,25 @@ function getBaseUrl(req) {
   return `${proto}://${host}`;
 }
 
-function getAuthHeader() {
-  const sid = process.env.TWILIO_ACCOUNT_SID;
-  const token = process.env.TWILIO_AUTH_TOKEN;
-  if (!sid || !token) return null;
-  return 'Basic ' + Buffer.from(sid + ':' + token).toString('base64');
+function buildGather(twiml, { baseUrl, orderNo, lang }) {
+  const language = lang === 'en' ? 'en-US' : 'ja-JP';
+  return twiml.gather({
+    input: 'speech',
+    language,
+    speechModel: 'experimental_conversations',
+    speechTimeout: 'auto',
+    action: `${baseUrl}/twilio/voice/${orderNo}/gather`,
+    method: 'POST',
+  });
 }
 
-export default async function voiceRecordHandler(req, res) {
+export default async function voiceGatherHandler(req, res) {
   const { orderNo } = req.params;
   const body = req.body || {};
-  const recordingUrl = body.RecordingUrl || body.recording_url;
-  const callSid = body.CallSid || body.CallSid;
+  const speechResult = (body.SpeechResult || '').trim();
 
   const db = getDb();
-  const order = orderNo
-    ? db.prepare('SELECT * FROM orders WHERE order_no = ?').get(orderNo)
-    : (callSid ? db.prepare('SELECT * FROM orders WHERE twilio_call_sid = ?').get(callSid) : null);
+  const order = db.prepare('SELECT * FROM orders WHERE order_no = ?').get(orderNo);
 
   const twiml = new VoiceResponse();
   if (!order) {
@@ -54,16 +56,13 @@ export default async function voiceRecordHandler(req, res) {
     if (raw) callRecords = JSON.parse(raw);
   } catch (_) {}
 
-  const authHeader = getAuthHeader();
-  const recordingUri = (recordingUrl || '').replace(/\.(mp3|wav)?$/i, '') + '.mp3';
-  const transcribe = lang === 'en' ? transcribeEnFromUrl : transcribeJaFromUrl;
   const debugTiming = process.env.DEBUG_VOICE === '1';
   const t0 = debugTiming ? Date.now() : 0;
 
-  const lastText = await transcribe(recordingUri, { authHeader });
-  if (debugTiming) console.log(`[voice] ASR ${Date.now() - t0}ms`);
   const emptyFallback = lang === 'en' ? '(silence or unclear)' : '(無音または聞き取れず)';
-  callRecords.push({ role: 'restaurant', text_ja: lastText || emptyFallback });
+  const lastText = speechResult || emptyFallback;
+  callRecords.push({ role: 'restaurant', text_ja: lastText });
+  if (debugTiming) console.log(`[voice-gather] ASR skipped (Twilio built-in), text: ${lastText}`);
 
   let nextReply;
   let ttsUrlCached = null;
@@ -75,8 +74,8 @@ export default async function voiceRecordHandler(req, res) {
     ttsUrlCached = cached.ttsUrl;
   } else {
     const t1 = debugTiming ? Date.now() : 0;
-    nextReply = await getNextAiReply(order, callRecords, lastText || null);
-    if (debugTiming) console.log(`[voice] LLM ${Date.now() - t1}ms`);
+    nextReply = await getNextAiReply(order, callRecords, lastText === emptyFallback ? null : lastText);
+    if (debugTiming) console.log(`[voice-gather] LLM ${Date.now() - t1}ms`);
   }
   callRecords.push({ role: 'ai', text_ja: nextReply.text_ja });
 
@@ -105,19 +104,20 @@ export default async function voiceRecordHandler(req, res) {
   const ttsUrl = ttsUrlCached || await (lang === 'en'
     ? synthesizeEnToUrl(nextReply.text_ja, baseUrl)
     : synthesizeJaToUrl(nextReply.text_ja, baseUrl));
-  if (debugTiming) console.log(`[voice] TTS ${Date.now() - t2}ms, total ${Date.now() - t0}ms`);
+  if (debugTiming) console.log(`[voice-gather] TTS ${Date.now() - t2}ms, total ${Date.now() - t0}ms`);
+
+  const gather = buildGather(twiml, { baseUrl, orderNo, lang });
   if (ttsUrl) {
-    twiml.play(ttsUrl);
+    gather.play(ttsUrl);
   } else {
-    twiml.say({ language: lang === 'en' ? 'en-US' : 'ja-JP' }, nextReply.text_ja);
+    gather.say({ language: lang === 'en' ? 'en-US' : 'ja-JP' }, nextReply.text_ja);
   }
-  twiml.record({
-    maxLength: 15,
-    timeout: 3,
-    playBeep: false,
-    action: `${baseUrl}/twilio/voice/${order.order_no}/record`,
-    method: 'POST',
-  });
+
+  twiml.say(
+    { language: lang === 'en' ? 'en-US' : 'ja-JP' },
+    lang === 'en' ? 'Sorry, I didn\'t catch that.' : 'すみません、聞き取れませんでした。'
+  );
+  twiml.hangup();
 
   res.type('text/xml').send(twiml.toString());
 }

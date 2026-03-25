@@ -71,12 +71,13 @@ async function synthesizeToUrl({ text, baseUrl, lang }) {
       return '';
     }
 
+    const speechRate = process.env.TTS_SPEECH_RATE || '50';
     const paramsObj = {
       appkey: appKey,
       text: text.trim(),
       format: 'mp3',
       sample_rate: '16000',
-      speech_rate: '0',
+      speech_rate: speechRate,
       volume: '50',
     };
     if (voice) paramsObj.voice = voice;

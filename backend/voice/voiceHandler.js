@@ -19,19 +19,43 @@ function formatDateForJapanese(ymd) {
 }
 
 /**
- * 2.5 期：多轮对话入口。
- * 1) 先 Record 等对方接通并说「喂」等，再 Play AI 话术（不在一接通就开讲）
- * 2) 首句由预生成缓存或 LLM 生成，避免 502
+ * Gather 模式：利用 Twilio 内置语音识别，跳过下载+ffmpeg+ASR。
+ * Gather 在检测到语音后直接 POST SpeechResult 到回调。
+ */
+async function handleGatherMode(order, orderNo, req, res) {
+  const baseUrl = getBaseUrl(req);
+  const lang = (order.call_lang || 'ja').toLowerCase() === 'en' ? 'en' : 'ja';
+  const language = lang === 'en' ? 'en-US' : 'ja-JP';
+  const twiml = new VoiceResponse();
+
+  twiml.gather({
+    input: 'speech',
+    language,
+    speechModel: 'experimental_conversations',
+    speechTimeout: 'auto',
+    action: `${baseUrl}/twilio/voice/${orderNo}/gather`,
+    method: 'POST',
+  });
+
+  twiml.say({ language }, lang === 'en'
+    ? 'Sorry, I didn\'t catch that. Goodbye.'
+    : 'すみません、聞き取れませんでした。失礼いたします。');
+  twiml.hangup();
+
+  res.type('text/xml').send(twiml.toString());
+}
+
+/**
+ * Record 模式（旧方案）：先 Record 等对方说话，再下载+ASR+LLM+TTS。
  */
 async function handleMultiRound(order, orderNo, req, res) {
   const baseUrl = getBaseUrl(req);
   const twiml = new VoiceResponse();
 
-  // 先 Record 5 秒，等对方接通并说「はい」「もしもし」等，再在 voiceRecordHandler 中 Play AI 话术
   twiml.record({
     maxLength: 5,
     playBeep: false,
-    timeout: 5,
+    timeout: 3,
     action: `${baseUrl}/twilio/voice/${orderNo}/record`,
     method: 'POST',
   });
@@ -132,8 +156,13 @@ export default async function voiceHandler(req, res) {
     return;
   }
 
-  const useMultiRound = !!(process.env.ALI_APP_KEY_JA || process.env.ALIYUN_APP_KEY_JA || process.env.ALI_APP_KEY_EN || process.env.ALI_APP_KEY || process.env.ALIYUN_APP_KEY);
-  if (useMultiRound) {
+  const hasAliyunASR = !!(process.env.ALI_APP_KEY_JA || process.env.ALIYUN_APP_KEY_JA || process.env.ALI_APP_KEY_EN || process.env.ALI_APP_KEY || process.env.ALIYUN_APP_KEY);
+  const useGather = process.env.USE_TWILIO_GATHER === '1';
+
+  if (useGather) {
+    return handleGatherMode(order, orderNo, req, res);
+  }
+  if (hasAliyunASR) {
     return handleMultiRound(order, orderNo, req, res);
   }
   return handleLegacy(order, orderNo, req, res);

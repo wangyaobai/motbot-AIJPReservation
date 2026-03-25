@@ -255,7 +255,8 @@ Output only English, no explanations.`;
     const ctrl = new AbortController();
     const to = setTimeout(() => ctrl.abort(), timeoutMs);
     let raw;
-    if (useDeepSeek && process.env.AI_STREAM === '1') {
+    const useStream = useDeepSeek && process.env.AI_STREAM !== '0';
+    if (useStream) {
       raw = await fetchDeepSeekStream(url, headers, body, ctrl.signal);
     } else {
       const resp = await fetch(url, {

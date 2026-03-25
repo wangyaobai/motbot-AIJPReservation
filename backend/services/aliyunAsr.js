@@ -51,30 +51,24 @@ async function downloadToBuffer(recordingUrl, authHeader) {
  * @returns {Promise<Buffer>} 16k 单声道 MP3
  */
 export async function convertTo16kMp3(inputBuf, inputExt = 'webm') {
-  const ts = Date.now();
-  const ext = String(inputExt || 'webm').replace(/^\./, '');
-  const inPath = path.join(tmpDir, `asr-in-${ts}.${ext}`);
-  const outPath = path.join(tmpDir, `asr-out-${ts}.mp3`);
-  try {
-    fs.writeFileSync(inPath, inputBuf);
-    await new Promise((resolve, reject) => {
-      const proc = spawn('ffmpeg', [
-        '-y', '-i', inPath,
-        '-ar', '16000', '-ac', '1',
-        '-f', 'mp3', outPath,
-      ], { stdio: ['ignore', 'pipe', 'pipe'] });
-      let err = '';
-      proc.stderr?.on('data', (d) => { err += d.toString(); });
-      proc.on('close', (code) => {
-        if (code === 0) resolve();
-        else reject(new Error(`ffmpeg exit ${code}: ${err.slice(-200)}`));
-      });
+  return new Promise((resolve, reject) => {
+    const proc = spawn('ffmpeg', [
+      '-y', '-i', 'pipe:0',
+      '-ar', '16000', '-ac', '1',
+      '-f', 'mp3', 'pipe:1',
+    ], { stdio: ['pipe', 'pipe', 'pipe'] });
+    const chunks = [];
+    let err = '';
+    proc.stdout.on('data', (d) => chunks.push(d));
+    proc.stderr.on('data', (d) => { err += d.toString(); });
+    proc.on('close', (code) => {
+      if (code === 0) resolve(Buffer.concat(chunks));
+      else reject(new Error(`ffmpeg exit ${code}: ${err.slice(-200)}`));
     });
-    return fs.readFileSync(outPath);
-  } finally {
-    try { fs.unlinkSync(inPath); } catch {}
-    try { fs.unlinkSync(outPath); } catch {}
-  }
+    proc.on('error', reject);
+    proc.stdin.write(inputBuf);
+    proc.stdin.end();
+  });
 }
 
 /**
@@ -82,29 +76,24 @@ export async function convertTo16kMp3(inputBuf, inputExt = 'webm') {
  * Twilio MP3 录音常为 22050Hz，直接上传会报 40000009。
  */
 async function resampleTo16k(buf) {
-  const inPath = path.join(tmpDir, `asr-in-${Date.now()}.mp3`);
-  const outPath = path.join(tmpDir, `asr-out-${Date.now()}.mp3`);
-  try {
-    fs.writeFileSync(inPath, buf);
-    await new Promise((resolve, reject) => {
-      const proc = spawn('ffmpeg', [
-        '-y', '-i', inPath,
-        '-ar', '16000', '-ac', '1',
-        '-f', 'mp3', outPath,
-      ], { stdio: ['ignore', 'pipe', 'pipe'] });
-      let err = '';
-      proc.stderr?.on('data', (d) => { err += d.toString(); });
-      proc.on('close', (code) => {
-        if (code === 0) resolve();
-        else reject(new Error(`ffmpeg exit ${code}: ${err.slice(-200)}`));
-      });
+  return new Promise((resolve, reject) => {
+    const proc = spawn('ffmpeg', [
+      '-y', '-i', 'pipe:0',
+      '-ar', '16000', '-ac', '1',
+      '-f', 'mp3', 'pipe:1',
+    ], { stdio: ['pipe', 'pipe', 'pipe'] });
+    const chunks = [];
+    let err = '';
+    proc.stdout.on('data', (d) => chunks.push(d));
+    proc.stderr.on('data', (d) => { err += d.toString(); });
+    proc.on('close', (code) => {
+      if (code === 0) resolve(Buffer.concat(chunks));
+      else reject(new Error(`ffmpeg exit ${code}: ${err.slice(-200)}`));
     });
-    const out = fs.readFileSync(outPath);
-    return out;
-  } finally {
-    try { fs.unlinkSync(inPath); } catch {}
-    try { fs.unlinkSync(outPath); } catch {}
-  }
+    proc.on('error', reject);
+    proc.stdin.write(buf);
+    proc.stdin.end();
+  });
 }
 
 /**
