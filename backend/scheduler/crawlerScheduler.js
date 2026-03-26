@@ -1,27 +1,24 @@
 /**
  * 每周自动执行爬虫调度器。
- * 默认每周日凌晨 3:00（服务器本地时间）执行一次 refresh-from-crawlers --auto-merge。
+ * 爬取数据只写入 recommendations_crawled，不自动合并到 recommendations_best。
+ * 需管理员在后台审核后手动确认才进入前端展示。
+ *
  * 可通过 DISABLE_CRAWLER_SCHEDULER=1 关闭。
  * 可通过 CRAWLER_SCHEDULE_DAY=0-6 设置星期几（0=周日，默认0）。
  * 可通过 CRAWLER_SCHEDULE_HOUR=0-23 设置几点（默认3）。
  */
 import { ensureSchema } from '../db.js';
 import {
-  writeBestRecommendations,
-  readBestRecommendations,
   getCityZh,
   filterListByCityKey,
   filterOtherCityList,
-  applyBestMediaOverlay,
   isFallbackImage,
-  backupToFallback,
   writeCrawledRecommendations,
 } from '../services/recommendationsStore.js';
-import { clearRecommendationsCache } from '../routes/recommendations.js';
 
-const CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 分钟检查一次
+const CHECK_INTERVAL_MS = 30 * 60 * 1000;
 const JP_CITIES = ['tokyo', 'osaka', 'kyoto', 'nagoya', 'kobe', 'hokkaido', 'okinawa', 'kyushu', 'other'];
-const TARGET = 10;
+const TARGET = 15;
 
 export const crawlerState = {
   running: false,
@@ -42,26 +39,6 @@ function normalizeKey(s) {
   return String(s || '').trim().replace(/\s*[\(（][^\)）]*[\)）]\s*/g, ' ').replace(/\s{2,}/g, ' ').trim();
 }
 
-function mergeWithExisting(existing, crawled) {
-  const byName = new Map();
-  const existingList = Array.isArray(existing) ? existing : [];
-  for (const r of existingList) {
-    const n = normName(r?.name);
-    if (!n) continue;
-    const hasManual = r?.manual_image_url && r?.manual_enabled !== 0;
-    const hasGoodCover = r?.image && !isFallbackImage(r.image);
-    if (hasManual || hasGoodCover) byName.set(n, { ...r, _priority: 2 });
-    else if (!byName.has(n)) byName.set(n, { ...r, _priority: 1 });
-  }
-  for (const r of crawled) {
-    const n = normName(r?.name);
-    if (!n || byName.has(n)) continue;
-    byName.set(n, { ...r, _priority: 0 });
-  }
-  const sorted = [...byName.values()].sort((a, b) => (b._priority || 0) - (a._priority || 0));
-  return sorted.map(({ _priority, ...r }) => r).slice(0, TARGET);
-}
-
 export async function runCrawlerJob() {
   if (crawlerState.running) {
     console.log('[crawler-scheduler] 爬虫正在运行中，跳过');
@@ -70,7 +47,7 @@ export async function runCrawlerJob() {
   crawlerState.running = true;
   crawlerState.lastError = null;
   const startedAt = new Date().toISOString();
-  console.log('[crawler-scheduler] 开始执行爬虫…');
+  console.log('[crawler-scheduler] 开始执行爬虫（仅写入 crawled，需后台确认后进入前端）…');
 
   try {
     ensureSchema();
@@ -78,9 +55,6 @@ export async function runCrawlerJob() {
     const { crawlTabelogCity, crawlTabelogOther } = await import('../services/crawlers/tabelog.js');
     const { queryMichelinRestaurantsJapan } = await import('../services/crawlers/wikidata-michelin.js');
     const { resolveRestaurantMediaBatch } = await import('../services/resolveRestaurantMedia.js');
-
-    const backed = backupToFallback();
-    console.log('[crawler-scheduler] 已备份', backed, '城到兜底表');
 
     let michelinByCity = {};
     try {
@@ -102,9 +76,9 @@ export async function runCrawlerJob() {
         const cityZh = getCityZh(cityKey);
         let crawled = [];
         if (cityKey === 'other') {
-          crawled = await crawlTabelogOther(TARGET + 5);
+          crawled = await crawlTabelogOther(TARGET);
         } else {
-          crawled = await crawlTabelogCity(cityKey, TARGET + 5);
+          crawled = await crawlTabelogCity(cityKey, TARGET);
         }
 
         const michelinList = michelinByCity[cityKey] || [];
@@ -145,15 +119,8 @@ export async function runCrawlerJob() {
         }
 
         writeCrawledRecommendations({ country: 'jp', cityKey, cityZh, restaurants: list });
-
-        const best = readBestRecommendations({ country: 'jp', cityKey });
-        const existing = best?.restaurants ? applyBestMediaOverlay({ restaurants: best.restaurants, cityZh }) : [];
-        const final = mergeWithExisting(existing, list).slice(0, TARGET);
-        if (final.length > 0) {
-          writeBestRecommendations({ country: 'jp', cityKey, cityZh, restaurants: final });
-        }
-        allResults.push({ cityKey, count: final.length, crawled: list.length });
-        console.log('[crawler-scheduler]', cityKey, '爬取', list.length, '家，合并到前端', final.length, '家');
+        allResults.push({ cityKey, crawled: list.length });
+        console.log('[crawler-scheduler]', cityKey, '爬取', list.length, '家 -> 已入库 crawled');
 
         await new Promise((r) => setTimeout(r, 3000));
       } catch (e) {
@@ -162,11 +129,10 @@ export async function runCrawlerJob() {
       }
     }
 
-    clearRecommendationsCache();
     crawlerState.lastRunAt = startedAt;
     crawlerState.lastResult = allResults;
     crawlerState.running = false;
-    console.log('[crawler-scheduler] 爬虫完成', allResults);
+    console.log('[crawler-scheduler] 爬虫完成，等待后台审核确认', allResults);
     return { ok: true, results: allResults };
   } catch (e) {
     crawlerState.lastError = e?.message || String(e);

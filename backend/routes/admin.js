@@ -18,6 +18,7 @@ import {
   filterListByCityKey,
   filterToListWithCover,
   isFallbackImage as isFallbackImageStore,
+  isVisibleCover,
 } from '../services/recommendationsStore.js';
 import { clearRecommendationsCache } from './recommendations.js';
 import { runCrawlerJob, crawlerState } from '../scheduler/crawlerScheduler.js';
@@ -177,12 +178,12 @@ router.get('/frontend-display', (req, res) => {
       const withCover = filterToListWithCover(snapshot);
 
       const restaurants = snapshot.map((r) => {
-        const hasCover = r?.image && !isFallbackImageStore(r.image);
+        const visible = isVisibleCover(r?.image);
         const manualMedia = getBestCachedMedia({ cityHint: cityZh, name: r.name });
         const hasManual = manualMedia?.manual_image_url && manualMedia.manual_enabled !== 0;
         let coverSource = 'none';
-        if (hasManual) coverSource = 'manual';
-        else if (hasCover) coverSource = 'auto';
+        if (hasManual && visible) coverSource = 'manual';
+        else if (visible) coverSource = 'auto';
         return {
           id: r.id, name: r.name, image: r.image || '', address: r.address,
           feature: r.feature, phone: r.phone, coverSource,
@@ -362,14 +363,14 @@ router.get('/restaurants-without-cover', (req, res) => {
       const displayableCount = displayable.length;
       const needFill = displayableCount < 10;
 
-      const candidates = snapshot.filter((r) => isFallbackImageStore(r?.image));
+      const candidates = snapshot.filter((r) => !isVisibleCover(r?.image));
       items.push({
         cityKey, cityZh, totalInCity: snapshot.length,
         withCoverCount: manualCount, displayableCount, needFill, noData: false,
         restaurants: candidates.map((r) => ({
           id: r.id, name: r.name, address: r.address, feature: r.feature,
           image: r.image || FALLBACK_IMAGE, image_url: r.image || '',
-          reasons: ['缺封面图'],
+          reasons: [isFallbackImageStore(r?.image) ? '无封面图' : '图片用户不可见（防盗链）'],
         })),
       });
     }
@@ -564,7 +565,27 @@ router.get('/media/duplicate-manual-covers', (req, res) => {
 
 // ========== 店铺管理：兜底 + 新爬取 ==========
 
-/** 备份当前 recommendations_best 到兜底表（首次或兜底为空时调用） */
+/** 从兜底恢复到前端展示（用于爬虫数据确认后发现问题时回退） */
+router.post('/shops/fallback/restore', (req, res) => {
+  try {
+    const { cityKey } = req.body || {};
+    const cityKeys = cityKey ? [cityKey] : JP_CITY_KEYS;
+    let restored = 0;
+    for (const ck of cityKeys) {
+      const data = readFallbackRecommendations({ country: 'jp', cityKey: ck });
+      if (data?.restaurants?.length) {
+        writeBestRecommendations({ country: 'jp', cityKey: ck, cityZh: data.cityZh || cityZhFromKey(ck), restaurants: data.restaurants });
+        restored++;
+      }
+    }
+    clearRecommendationsCache();
+    res.json({ ok: true, restored, message: `已从兜底恢复 ${restored} 个城市到前端展示` });
+  } catch (e) {
+    res.status(500).json({ ok: false, message: e?.message || 'Server error' });
+  }
+});
+
+/** 备份当前 recommendations_best 到兜底表 */
 router.post('/shops/fallback/backup', (req, res) => {
   try {
     const count = backupToFallback();
@@ -684,7 +705,7 @@ router.post('/shops/fallback/save', (req, res) => {
   }
 });
 
-/** 确认爬取数据进入前端展示（写入 recommendations_best） */
+/** 确认爬取数据进入前端展示：先备份当前 best 到兜底，再写入新数据 */
 router.post('/shops/crawled/confirm', (req, res) => {
   try {
     const { cityKey, restaurantIds } = req.body || {};
@@ -705,9 +726,11 @@ router.post('/shops/crawled/confirm', (req, res) => {
     if (final.length === 0) {
       return res.json({ ok: false, message: '请至少选择 1 家餐厅' });
     }
+    // 先将当前 best 备份到兜底表，保护手工填写的数据
+    backupToFallback();
     writeBestRecommendations({ country: 'jp', cityKey, cityZh, restaurants: final });
     clearRecommendationsCache();
-    res.json({ ok: true, count: final.length, message: `已确认 ${final.length} 家进入前端展示` });
+    res.json({ ok: true, count: final.length, message: `已备份旧数据到兜底，${final.length} 家已进入前端展示` });
   } catch (e) {
     res.status(500).json({ ok: false, message: e?.message || 'Server error' });
   }

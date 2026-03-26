@@ -11,9 +11,26 @@ export function isFallbackImage(url) {
   return !u || u.includes('images.pexels.com/photos/4106483/');
 }
 
+/** 检测图片 URL 是否因防盗链等原因在用户浏览器端无法显示 */
+export function isLikelyBrokenImage(url) {
+  const u = String(url || '').trim();
+  if (!u) return false;
+  try {
+    const host = new URL(u).hostname || '';
+    if (host.includes('tblg.k-img.com')) return true;
+    if (host.includes('tabelog.com')) return true;
+  } catch {}
+  return false;
+}
+
+/** 用户实际能看到图片 = 非兜底图 且 非防盗链图 */
+export function isVisibleCover(url) {
+  return !isFallbackImage(url) && !isLikelyBrokenImage(url);
+}
+
 export function filterToListWithCover(restaurants) {
   const list = Array.isArray(restaurants) ? restaurants : [];
-  return list.filter((r) => r && !isFallbackImage(r?.image));
+  return list.filter((r) => r && isVisibleCover(r?.image));
 }
 
 function recoCacheKey(country, city) {

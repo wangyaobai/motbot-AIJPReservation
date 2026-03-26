@@ -17,6 +17,8 @@ export function AdminShops({ apiBase, adminToken }) {
   const [confirmingCity, setConfirmingCity] = useState(null);
   const [selectedIds, setSelectedIds] = useState({});
   const [backupMsg, setBackupMsg] = useState('');
+  const [restoreMsg, setRestoreMsg] = useState('');
+  const [restoring, setRestoring] = useState(false);
   const [crawlerStatus, setCrawlerStatus] = useState(null);
   const [crawlerRunning, setCrawlerRunning] = useState(false);
   const [crawlerMsg, setCrawlerMsg] = useState('');
@@ -83,6 +85,29 @@ export function AdminShops({ apiBase, adminToken }) {
       fetchFallback();
     } catch (e) {
       setBackupMsg(e.message || '备份失败');
+    }
+  };
+
+  const runRestore = async (cityKey) => {
+    if (!confirm(cityKey
+      ? `确认将「${cityKey}」从兜底恢复到前端展示？当前前端数据将被覆盖。`
+      : '确认将所有城市从兜底恢复到前端展示？当前前端数据将被覆盖。'
+    )) return;
+    setRestoring(true);
+    setRestoreMsg('');
+    try {
+      const res = await fetch(`${apiBase}/admin/shops/fallback/restore`, {
+        method: 'POST',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ cityKey: cityKey || undefined }),
+      });
+      const data = await assertOkJson(res, '恢复失败');
+      setRestoreMsg(data.message || '恢复成功');
+      fetchFallback();
+    } catch (e) {
+      setRestoreMsg(e.message || '恢复失败');
+    } finally {
+      setRestoring(false);
     }
   };
 
@@ -228,22 +253,27 @@ export function AdminShops({ apiBase, adminToken }) {
 
       {subTab === 'fallback' && (
         <div className="admin-shops-fallback">
+          <p className="admin-desc">
+            兜底数据是你手工整理好的前端展示数据的备份。每次从「爬取数据」确认进入前端时，系统会自动将旧数据备份到这里。
+            如果新数据有误，可点击「恢复到前端」回退到兜底版本。
+          </p>
           <div className="admin-panel">
             <div className="admin-actions">
-              <button type="button" className="btn-primary" onClick={runBackup}>
-                备份当前到兜底
+              <button type="button" className="btn-primary" disabled={restoring || !fallbackHasData} onClick={() => runRestore()}>
+                {restoring ? '恢复中…' : '全部恢复到前端'}
+              </button>
+              <button type="button" className="btn-outline" onClick={runBackup}>
+                手动备份当前到兜底
               </button>
               <button type="button" className="btn-ghost" onClick={fetchAll}>刷新</button>
-              {backupMsg && <span className="admin-msg-success">{backupMsg}</span>}
             </div>
+            {backupMsg && <p className="admin-msg">{backupMsg}</p>}
+            {restoreMsg && <p className="admin-msg">{restoreMsg}</p>}
           </div>
           {!fallbackHasData ? (
             <div className="admin-panel" style={{ textAlign: 'center', padding: '40px 20px' }}>
               <p style={{ fontSize: '1.1rem', color: '#6b7280', marginBottom: 16 }}>
-                兜底店铺为空。点击上方「备份当前到兜底」将当前前端展示的店铺数据备份到兜底表。
-              </p>
-              <p style={{ fontSize: '0.85rem', color: '#9ca3af' }}>
-                兜底数据用于爬虫更新后如果新数据有问题时，可恢复到之前的稳定版本。
+                兜底店铺为空。你可以点击「手动备份当前到兜底」保存当前前端数据；或当你从「爬取数据」确认新数据时，系统会自动备份。
               </p>
             </div>
           ) : (
@@ -251,7 +281,13 @@ export function AdminShops({ apiBase, adminToken }) {
               <div key={g.cityKey} className="admin-media-city">
                 <h3>
                   {g.cityZh}（{g.cityKey}）
-                  {g.updatedAt && <span className="admin-media-count"> 更新于 {g.updatedAt}</span>}
+                  {g.updatedAt && <span className="admin-media-count"> 备份于 {g.updatedAt}</span>}
+                  {g.restaurants?.length > 0 && (
+                    <button type="button" className="btn-outline" style={{ marginLeft: 12, fontSize: '0.75rem', padding: '2px 10px' }}
+                      disabled={restoring} onClick={() => runRestore(g.cityKey)}>
+                      恢复此城到前端
+                    </button>
+                  )}
                 </h3>
                 {!g.restaurants?.length ? (
                   <p className="admin-media-empty">暂无兜底数据</p>
@@ -332,7 +368,8 @@ export function AdminShops({ apiBase, adminToken }) {
           </div>
 
           <p className="admin-desc">
-            爬取数据来自 Tabelog/Wikidata，缺封面的可补填。选择后点击「确认进入前端展示」写入前端数据。
+            爬取数据来自 Tabelog/Wikidata，请核实电话、地址、封面图等信息。确认无误后选择店铺点击「确认进入前端展示」，
+            系统会自动将当前前端数据备份到兜底表，然后写入新数据。
           </p>
 
           {crawledItems.map((g) => (
