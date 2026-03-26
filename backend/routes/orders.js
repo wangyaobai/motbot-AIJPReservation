@@ -113,31 +113,36 @@ router.post('/', async (req, res) => {
   }
 });
 
-// 管理后台：订单列表（支持按状态、按用户 user_id 筛选）
+// 管理后台：订单列表（支持按状态、按用户 user_id 筛选，支持分页）
 router.get('/', async (req, res) => {
   try {
     const { status: statusFilter, user_id: userId } = req.query;
-    let sql = 'SELECT * FROM orders WHERE 1=1';
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize) || 20));
+
+    let where = ' WHERE 1=1';
     const params = [];
     if (userId) {
-      sql += ' AND user_id = ?';
+      where += ' AND user_id = ?';
       params.push(userId);
     }
     if (statusFilter && statusFilter !== 'all') {
       if (statusFilter === 'pending_pay') {
-        sql += ' AND status = ?';
+        where += ' AND status = ?';
         params.push('pending_pay');
       } else if (statusFilter === 'booking') {
-        sql += " AND status IN ('pending', 'calling')";
+        where += " AND status IN ('pending', 'calling')";
       } else if (['completed', 'failed', 'cancelled'].includes(statusFilter)) {
-        sql += ' AND status = ?';
+        where += ' AND status = ?';
         params.push(statusFilter);
       }
     }
-    sql += ' ORDER BY created_at DESC';
-    const rows = db.prepare(sql).all(...params);
+
+    const { total } = db.prepare(`SELECT COUNT(*) as total FROM orders${where}`).get(...params);
+    const sql = `SELECT * FROM orders${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`;
+    const rows = db.prepare(sql).all(...params, pageSize, (page - 1) * pageSize);
     const orders = await Promise.all(rows.map((r) => enrichAiCallStatusAsync({ ...r })));
-    res.json({ ok: true, orders });
+    res.json({ ok: true, orders, total, page, pageSize });
   } catch (e) {
     console.error(e);
     res.status(500).json({ ok: false, message: e.message || '查询失败' });

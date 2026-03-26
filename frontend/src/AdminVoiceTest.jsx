@@ -31,11 +31,8 @@ const defaultOrder = () => {
   };
 };
 
-export function AdminVoiceTest({ apiBase = API }) {
-  const [adminToken, setAdminToken] = useState(() =>
-    typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('adminToken') || '' : ''
-  );
-  const [langMode, setLangMode] = useState('auto'); // auto | ja | en
+export function AdminVoiceTest({ apiBase = API, adminToken }) {
+  const [langMode, setLangMode] = useState('auto');
   const [order, setOrder] = useState(defaultOrder);
   const [callRecords, setCallRecords] = useState([]);
   const [inputText, setInputText] = useState('');
@@ -47,11 +44,7 @@ export function AdminVoiceTest({ apiBase = API }) {
   const mediaRecorderRef = useRef(null);
   const audioRef = useRef(null);
 
-  useEffect(() => {
-    if (adminToken && typeof sessionStorage !== 'undefined') sessionStorage.setItem('adminToken', adminToken);
-  }, [adminToken]);
-
-  const headers = () => ({ 'x-admin-token': adminToken?.trim() || '', 'Content-Type': 'application/json' });
+  const headers = () => ({ 'x-admin-token': adminToken || '', 'Content-Type': 'application/json' });
 
   const getEffectiveLang = (text) => {
     if (langMode === 'ja') return 'ja';
@@ -190,7 +183,7 @@ export function AdminVoiceTest({ apiBase = API }) {
           form.append('lang', asrLang);
           const res = await fetch(`${apiBase}/admin/voice-test/asr`, {
             method: 'POST',
-            headers: { 'x-admin-token': adminToken?.trim() || '' },
+            headers: { 'x-admin-token': adminToken || '' },
             body: form,
           });
           const data = await res.json();
@@ -244,16 +237,6 @@ export function AdminVoiceTest({ apiBase = API }) {
       </p>
 
       <div className="admin-voice-test-form">
-        <div className="form-row">
-          <label>Admin Token</label>
-          <input
-            type="password"
-            value={adminToken}
-            onChange={(e) => setAdminToken(e.target.value)}
-            placeholder="与 .env ADMIN_TOKEN 一致"
-            style={{ width: 200 }}
-          />
-        </div>
         <div className="admin-voice-test-section">
           <h4>预约信息（与用户端一致）</h4>
           <div className="form-row">
@@ -414,7 +397,7 @@ export function AdminVoiceTest({ apiBase = API }) {
               type="button"
               className="btn-submit"
               onClick={handleSubmit}
-              disabled={busy || !inputText.trim() || !adminToken?.trim()}
+              disabled={busy || !inputText.trim()}
             >
               提交餐厅回复 → 生成 AI 下一句
             </button>
@@ -423,7 +406,7 @@ export function AdminVoiceTest({ apiBase = API }) {
               className="btn-record"
               onMouseDown={(e) => { e.preventDefault(); startRecording(); }}
               onTouchStart={(e) => { e.preventDefault(); startRecording(); }}
-              disabled={busy || !adminToken?.trim()}
+              disabled={busy}
             >
               {status === 'recording' ? '🔴 录音中…' : '开始录音 (ASR)'}
             </button>

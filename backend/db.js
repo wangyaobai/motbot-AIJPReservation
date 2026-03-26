@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import bcrypt from 'bcryptjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.join(__dirname, 'data');
@@ -92,6 +93,21 @@ export function ensureSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_vc_phone ON verification_codes(phone);
   `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS admin_users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+  const adminCount = db.prepare('SELECT COUNT(*) as cnt FROM admin_users').get();
+  if (adminCount.cnt === 0) {
+    const hash = bcrypt.hashSync('admin123', 10);
+    db.prepare('INSERT INTO admin_users (username, password_hash) VALUES (?, ?)').run('admin', hash);
+    console.log('[db] 已创建默认管理员账号 admin / admin123，请尽快登录后修改密码');
+  }
 
   // 推荐餐厅“最佳媒体”缓存：一旦命中非兜底图就持久化保存，加速首页加载
   db.exec(`

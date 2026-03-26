@@ -46,7 +46,8 @@ function getDialogue(order) {
   ];
 }
 
-export function AdminQuery({ apiBase }) {
+export function AdminQuery({ apiBase, adminToken }) {
+  const authHeaders = (extra = {}) => ({ 'x-admin-token': adminToken || '', ...extra });
   const [statusFilter, setStatusFilter] = useState('all');
   const [userId, setUserId] = useState('');
   const [users, setUsers] = useState([]);
@@ -56,25 +57,31 @@ export function AdminQuery({ apiBase }) {
   const [detailOrder, setDetailOrder] = useState(null);
   const [detailSubModal, setDetailSubModal] = useState(null);
   const [cancelling, setCancelling] = useState(null);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const pageSize = 20;
 
   useEffect(() => {
-    fetch(`${apiBase}/admin/users`)
+    fetch(`${apiBase}/admin/users`, { headers: authHeaders() })
       .then((r) => r.json())
       .then((d) => d.ok && setUsers(d.users || []))
       .catch(() => {});
   }, [apiBase]);
 
-  const fetchOrders = async () => {
+  const fetchOrders = async (p = page) => {
     setErr('');
     setLoading(true);
     try {
       const params = new URLSearchParams();
       if (statusFilter !== 'all') params.set('status', statusFilter);
       if (userId) params.set('user_id', userId);
-      const res = await fetch(`${apiBase}/orders?${params}`);
+      params.set('page', String(p));
+      params.set('pageSize', String(pageSize));
+      const res = await fetch(`${apiBase}/orders?${params}`, { headers: authHeaders() });
       const data = await res.json();
       if (!data.ok) throw new Error(data.message || '加载失败');
       setOrders(data.orders || []);
+      setTotal(data.total ?? 0);
     } catch (e) {
       setErr(e.message || '加载失败');
       setOrders([]);
@@ -84,14 +91,19 @@ export function AdminQuery({ apiBase }) {
   };
 
   useEffect(() => {
-    fetchOrders();
+    setPage(1);
+    fetchOrders(1);
   }, [statusFilter, userId, apiBase]);
+
+  useEffect(() => {
+    fetchOrders(page);
+  }, [page]);
 
   const handleCancel = async (orderNo) => {
     if (!confirm('确定取消该预约订单？')) return;
     setCancelling(orderNo);
     try {
-      const res = await fetch(`${apiBase}/orders/${orderNo}/cancel`, { method: 'POST' });
+      const res = await fetch(`${apiBase}/orders/${orderNo}/cancel`, { method: 'POST', headers: authHeaders() });
       const data = await res.json();
       if (!data.ok) throw new Error(data.message || '取消失败');
       setDetailOrder(null);
@@ -198,6 +210,14 @@ export function AdminQuery({ apiBase }) {
           </tbody>
         </table>
       </div>
+
+      {total > pageSize && (
+        <div className="admin-pagination">
+          <button type="button" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>上一页</button>
+          <span>第 {page} / {Math.ceil(total / pageSize)} 页（共 {total} 条）</span>
+          <button type="button" disabled={page >= Math.ceil(total / pageSize)} onClick={() => setPage((p) => p + 1)}>下一页</button>
+        </div>
+      )}
 
       {detailOrder && (
         <div className="modal-overlay" onClick={() => { setDetailOrder(null); setDetailSubModal(null); }}>

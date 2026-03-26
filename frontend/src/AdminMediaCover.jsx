@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 
 const API = import.meta.env.VITE_API_BASE || '/api';
 
-export function AdminMediaCover({ apiBase = API }) {
+export function AdminMediaCover({ apiBase = API, adminToken }) {
+  const authHeaders = (extra = {}) => ({ 'x-admin-token': adminToken || '', ...extra });
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
@@ -13,11 +14,10 @@ export function AdminMediaCover({ apiBase = API }) {
   const [uploadingKey, setUploadingKey] = useState(null);
   const [localizeMsg, setLocalizeMsg] = useState('');
   const [localizing, setLocalizing] = useState(false);
-  const [adminToken, setAdminToken] = useState(() => typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('adminToken') || '' : '');
   const [dupLoading, setDupLoading] = useState(false);
   const [dupErr, setDupErr] = useState('');
   const [dupGroups, setDupGroups] = useState([]);
-  const [dupQuery, setDupQuery] = useState(null); // { url?: string, prefix?: string }
+  const [dupQuery, setDupQuery] = useState(null);
   const fileInputRef = useRef(null);
   const fileInputKeyRef = useRef(null);
 
@@ -49,7 +49,7 @@ export function AdminMediaCover({ apiBase = API }) {
     setErr('');
     setLoading(true);
     try {
-      const res = await fetch(`${apiBase}/admin/restaurants-without-cover`);
+      const res = await fetch(`${apiBase}/admin/restaurants-without-cover`, { headers: authHeaders() });
       const data = await assertOkJson(res, '加载失败');
       setItems(data.items || []);
       setUrlByKey({});
@@ -82,7 +82,7 @@ export function AdminMediaCover({ apiBase = API }) {
     try {
       const res = await fetch(`${apiBase}/admin/media/manual-image`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           cityKey,
           name: name.trim(),
@@ -129,7 +129,7 @@ export function AdminMediaCover({ apiBase = API }) {
     try {
       const form = new FormData();
       form.append('cover', file);
-      const res = await fetch(`${apiBase}/admin/media/upload-cover`, { method: 'POST', body: form });
+      const res = await fetch(`${apiBase}/admin/media/upload-cover`, { method: 'POST', headers: { 'x-admin-token': adminToken || '' }, body: form });
       const data = await assertOkJson(res, '上传失败');
       updateUrl(cityKey, name, data.url || '');
     } catch (err) {
@@ -140,25 +140,19 @@ export function AdminMediaCover({ apiBase = API }) {
   };
 
   const runLocalize = async () => {
-    const token = (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('adminToken') : null) || adminToken?.trim();
-    if (!token) {
-      alert('请先填写 Admin Token（与服务器 Variables 中 ADMIN_TOKEN 一致），用于执行本地化操作');
-      return;
-    }
     setLocalizing(true);
     setLocalizeMsg('');
     try {
       const res = await fetch(`${apiBase}/admin/media/localize-covers`, {
         method: 'POST',
-        headers: { 'x-admin-token': token },
+        headers: authHeaders(),
       });
       await assertOkJson(res, '本地化失败（可能超时或服务异常）');
       setLocalizeMsg('已开始在后台下载外链封面到服务器，请稍候…');
 
-      // 轮询进度，避免一次性请求超时导致 HTML 返回
       const poll = async () => {
         const stRes = await fetch(`${apiBase}/admin/media/localize-covers/status`, {
-          headers: { 'x-admin-token': token },
+          headers: authHeaders(),
         }).catch(() => null);
         const st = stRes ? await readApiResponse(stRes).then((x) => x.data).catch(() => null) : null;
         if (!st?.ok) return;
@@ -181,11 +175,6 @@ export function AdminMediaCover({ apiBase = API }) {
   };
 
   const fetchDuplicates = async ({ url, prefix } = {}) => {
-    const token = (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('adminToken') : null) || adminToken?.trim();
-    if (!token) {
-      alert('请先填写 Admin Token（用于查询重复封面）');
-      return;
-    }
     setDupErr('');
     setDupGroups([]);
     setDupLoading(true);
@@ -195,7 +184,7 @@ export function AdminMediaCover({ apiBase = API }) {
       else qs.set('prefix', prefix || '/api/manual-covers/best');
       setDupQuery(url ? { url } : { prefix: prefix || '/api/manual-covers/best' });
       const res = await fetch(`${apiBase}/admin/media/duplicate-manual-covers?${qs.toString()}`, {
-        headers: { 'x-admin-token': token },
+        headers: authHeaders(),
       });
       const data = await res.json().catch(() => ({}));
       if (!data.ok) throw new Error(data.message || '查询失败');
@@ -207,15 +196,11 @@ export function AdminMediaCover({ apiBase = API }) {
     }
   };
 
-  useEffect(() => {
-    if (adminToken && typeof sessionStorage !== 'undefined') sessionStorage.setItem('adminToken', adminToken);
-  }, [adminToken]);
-
   const runRefine = async () => {
     setRefineMsg('');
     setRefining(true);
     try {
-      const res = await fetch(`${apiBase}/admin/refine-recommendation-images`, { method: 'POST' });
+      const res = await fetch(`${apiBase}/admin/refine-recommendation-images`, { method: 'POST', headers: authHeaders() });
       const { data } = await readApiResponse(res);
       if (data?.ok) {
         setRefineMsg(data.message || '已开始后台补齐，约 1～2 分钟后请点击刷新查看。');
@@ -261,7 +246,6 @@ export function AdminMediaCover({ apiBase = API }) {
           <button type="button" className="btn-ghost" onClick={fetchList} disabled={loading}>
             {loading ? '加载中…' : '刷新列表'}
           </button>
-          <input type="password" placeholder="Admin Token" value={adminToken} onChange={(e) => setAdminToken(e.target.value)} className="admin-media-input" style={{ minWidth: 140, flex: '0 1 180px' }} />
           <button type="button" className="btn-outline" disabled={localizing} onClick={runLocalize}>
             {localizing ? '本地化中…' : '外链封面本地化'}
           </button>

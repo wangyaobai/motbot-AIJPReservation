@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 
 const FALLBACK_IMG = 'https://images.pexels.com/photos/4106483/pexels-photo-4106483.jpeg';
 
-export function AdminShops({ apiBase }) {
+export function AdminShops({ apiBase, adminToken }) {
+  const authHeaders = (extra = {}) => ({ 'x-admin-token': adminToken || '', ...extra });
   const [subTab, setSubTab] = useState('fallback');
   const [fallbackItems, setFallbackItems] = useState([]);
   const [crawledItems, setCrawledItems] = useState([]);
@@ -28,13 +29,13 @@ export function AdminShops({ apiBase }) {
   };
 
   const fetchFallback = async () => {
-    const res = await fetch(`${apiBase}/admin/shops/fallback`);
+    const res = await fetch(`${apiBase}/admin/shops/fallback`, { headers: authHeaders() });
     const data = await assertOkJson(res, '加载兜底失败');
     setFallbackItems(data.items || []);
   };
 
   const fetchCrawled = async () => {
-    const res = await fetch(`${apiBase}/admin/shops/crawled`);
+    const res = await fetch(`${apiBase}/admin/shops/crawled`, { headers: authHeaders() });
     const data = await assertOkJson(res, '加载爬取失败');
     setCrawledItems(data.items || []);
   };
@@ -58,7 +59,7 @@ export function AdminShops({ apiBase }) {
   const runBackup = async () => {
     setBackupMsg('');
     try {
-      const res = await fetch(`${apiBase}/admin/shops/fallback/backup`, { method: 'POST' });
+      const res = await fetch(`${apiBase}/admin/shops/fallback/backup`, { method: 'POST', headers: authHeaders() });
       const data = await assertOkJson(res, '备份失败');
       setBackupMsg(data.message || '备份成功');
       fetchFallback();
@@ -73,7 +74,7 @@ export function AdminShops({ apiBase }) {
     try {
       const res = await fetch(`${apiBase}/admin/shops/fallback/save`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           cityKey,
           name: name.trim(),
@@ -107,7 +108,7 @@ export function AdminShops({ apiBase }) {
     try {
       const res = await fetch(`${apiBase}/admin/media/manual-image`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ cityKey, name: name.trim(), image_url: trimmed, enabled: 1 }),
       });
       await assertOkJson(res, '保存失败');
@@ -144,7 +145,7 @@ export function AdminShops({ apiBase }) {
     try {
       const form = new FormData();
       form.append('cover', file);
-      const res = await fetch(`${apiBase}/admin/media/upload-cover`, { method: 'POST', body: form });
+      const res = await fetch(`${apiBase}/admin/media/upload-cover`, { method: 'POST', headers: { 'x-admin-token': adminToken || '' }, body: form });
       const data = await assertOkJson(res, '上传失败');
       updateUrl(cityKey, name, data.url || '');
     } catch (err) {
@@ -174,7 +175,7 @@ export function AdminShops({ apiBase }) {
       const ids = selectedIds[cityKey] || [];
       const res = await fetch(`${apiBase}/admin/shops/crawled/confirm`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ cityKey, restaurantIds: ids.length > 0 ? ids : undefined }),
       });
       const data = await assertOkJson(res, '确认失败');

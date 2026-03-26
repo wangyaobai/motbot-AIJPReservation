@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { getDb } from '../db.js';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 import { runRefineRecommendationImages } from '../services/refineRecommendationImages.js';
 import { getBestCachedMedia } from '../services/resolveRestaurantMedia.js';
 import {
@@ -56,19 +58,78 @@ const db = getDb();
 
 let refineInFlight = false;
 
-function requireAdminToken(req, res) {
-  const token = process.env.ADMIN_TOKEN;
-  if (!token) {
-    res.status(500).json({ ok: false, message: 'ADMIN_TOKEN not configured' });
-    return false;
-  }
+const ADMIN_JWT_SECRET = process.env.JWT_SECRET || 'admin-jwt-secret-change-in-production';
+
+function verifyAdminToken(req) {
   const got = String(req.headers['x-admin-token'] || '').trim();
-  if (!got || got !== token) {
-    res.status(401).json({ ok: false, message: 'Unauthorized' });
-    return false;
-  }
-  return true;
+  if (!got) return null;
+  const envToken = process.env.ADMIN_TOKEN;
+  if (envToken && got === envToken) return { type: 'static' };
+  try {
+    const payload = jwt.verify(got, ADMIN_JWT_SECRET);
+    if (payload.isAdmin) return { type: 'jwt', admin: payload };
+  } catch {}
+  return null;
 }
+
+function adminAuthMiddleware(req, res, next) {
+  const result = verifyAdminToken(req);
+  if (!result) return res.status(401).json({ ok: false, message: 'Unauthorized' });
+  req.adminAuth = result;
+  next();
+}
+
+router.post('/login', (req, res) => {
+  try {
+    const { username, password } = req.body || {};
+    if (!username || !password) {
+      return res.status(400).json({ ok: false, message: '请输入用户名和密码' });
+    }
+    const user = db.prepare('SELECT * FROM admin_users WHERE username = ?').get(String(username).trim());
+    if (!user || !bcrypt.compareSync(String(password), user.password_hash)) {
+      return res.status(401).json({ ok: false, message: '用户名或密码错误' });
+    }
+    const token = jwt.sign(
+      { adminId: user.id, username: user.username, isAdmin: true },
+      ADMIN_JWT_SECRET,
+      { expiresIn: '7d' },
+    );
+    res.json({ ok: true, token, username: user.username });
+  } catch (e) {
+    res.status(500).json({ ok: false, message: e.message || '登录失败' });
+  }
+});
+
+router.get('/me', (req, res) => {
+  const result = verifyAdminToken(req);
+  if (!result) return res.status(401).json({ ok: false });
+  res.json({ ok: true, type: result.type, admin: result.admin || null });
+});
+
+router.post('/change-password', adminAuthMiddleware, (req, res) => {
+  try {
+    const { oldPassword, newPassword } = req.body || {};
+    if (!oldPassword || !newPassword) {
+      return res.status(400).json({ ok: false, message: '请输入旧密码和新密码' });
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({ ok: false, message: '新密码至少6位' });
+    }
+    const adminId = req.adminAuth?.admin?.adminId;
+    if (!adminId) return res.status(400).json({ ok: false, message: '仅 JWT 登录用户可修改密码' });
+    const user = db.prepare('SELECT * FROM admin_users WHERE id = ?').get(adminId);
+    if (!user || !bcrypt.compareSync(String(oldPassword), user.password_hash)) {
+      return res.status(401).json({ ok: false, message: '旧密码错误' });
+    }
+    const hash = bcrypt.hashSync(String(newPassword), 10);
+    db.prepare('UPDATE admin_users SET password_hash = ? WHERE id = ?').run(hash, adminId);
+    res.json({ ok: true, message: '密码已更新' });
+  } catch (e) {
+    res.status(500).json({ ok: false, message: e.message || '修改失败' });
+  }
+});
+
+router.use(adminAuthMiddleware);
 
 function maskPhone(phone) {
   if (!phone || phone.length < 7) return phone;
@@ -174,7 +235,6 @@ router.post('/refine-recommendation-images', async (req, res) => {
 
 /** 手动触发一次：从仓库根目录 manual_covers.json 导入手动封面（无 Shell 时备用） */
 router.post('/import-manual-covers', (req, res) => {
-  if (!requireAdminToken(req, res)) return;
   try {
     const __dirname = path.dirname(fileURLToPath(import.meta.url));
     const jsonPath = path.join(__dirname, '..', '..', 'manual_covers.json');
@@ -434,7 +494,6 @@ async function runLocalizeJob() {
 
 // 将现有外链封面下载到服务器并改为本地链接（后台任务，避免超时；需 x-admin-token）
 router.post('/media/localize-covers', (req, res) => {
-  if (!requireAdminToken(req, res)) return;
   if (localizeJob.running) return res.json(getLocalizeStatus());
   res.json({ ok: true, started: true });
   setImmediate(() => {
@@ -443,13 +502,11 @@ router.post('/media/localize-covers', (req, res) => {
 });
 
 router.get('/media/localize-covers/status', (req, res) => {
-  if (!requireAdminToken(req, res)) return;
   res.json(getLocalizeStatus());
 });
 
 // 查找重复的手动封面（用于排查 best________.webp 等被覆盖导致的串图问题；需 x-admin-token）
 router.get('/media/duplicate-manual-covers', (req, res) => {
-  if (!requireAdminToken(req, res)) return;
   try {
     const prefix = String(req.query?.prefix || '/api/manual-covers/best').trim();
     const url = String(req.query?.url || '').trim();
@@ -691,7 +748,6 @@ function getBaseUrl(req) {
 
 /** 语音转文字：上传音频（webm/mp3/wav 等），返回转写文本 */
 router.post('/voice-test/asr', (req, res) => {
-  if (!requireAdminToken(req, res)) return;
   uploadAudio(req, res, async (err) => {
     if (err) return res.status(400).json({ ok: false, message: err.message || '上传失败' });
     const file = req.file;
@@ -714,7 +770,6 @@ router.post('/voice-test/asr', (req, res) => {
 
 /** 获取 AI 下一句回复 */
 router.post('/voice-test/next-reply', async (req, res) => {
-  if (!requireAdminToken(req, res)) return;
   try {
     const { order, callRecords, lastRestaurantText, lang } = req.body || {};
     const l = (lang || 'ja').toString().toLowerCase() === 'en' ? 'en' : 'ja';
@@ -729,7 +784,6 @@ router.post('/voice-test/next-reply', async (req, res) => {
 
 /** 文字转语音：返回 TTS 音频 URL */
 router.post('/voice-test/tts', async (req, res) => {
-  if (!requireAdminToken(req, res)) return;
   try {
     const { text, lang } = req.body || {};
     if (!text || !String(text).trim()) return res.status(400).json({ ok: false, message: '缺少 text' });
