@@ -11,7 +11,7 @@
  *   node scripts/refresh-from-crawlers.js --auto-merge
  *   node scripts/refresh-from-crawlers.js --auto-merge --replace
  *
- * 可选环境变量：OVERPASS_API_URL；米其林无电话时可用 GOOGLE_PLACES_API_KEY 经 Google 补全（见 restaurantContactHybrid.js）
+ * 可选环境变量：OVERPASS_API_URL
  */
 import 'dotenv/config';
 import { ensureSchema } from '../db.js';
@@ -66,7 +66,7 @@ async function main() {
   const cities = cityArg ? [cityArg.split('=')[1]] : JP_CITIES;
 
   ensureSchema();
-  console.log('[refresh] 开始，城市:', cities.join(', '), dryRun ? '(dry-run)' : '', replace ? '(--replace)' : '', autoMerge ? '(--auto-merge)' : '', '(Wikidata + OSM + 可选 Google 补电话)');
+  console.log('[refresh] 开始，城市:', cities.join(', '), dryRun ? '(dry-run)' : '', replace ? '(--replace)' : '', autoMerge ? '(--auto-merge)' : '', '(Wikidata + OSM)');
 
   if (!dryRun) {
     const backed = backupToFallback();

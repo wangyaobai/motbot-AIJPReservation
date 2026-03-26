@@ -69,7 +69,6 @@
    | `TWILIO_AUTH_TOKEN` | 你的 Twilio Token |
    | `TWILIO_PHONE_NUMBER` | 你的 Twilio 号码（如 +1234567890） |
    | `OPENAI_API_KEY` | 你的 OpenAI Key |
-   | `GOOGLE_PLACES_API_KEY` | 你的 Google Places Key（餐厅搜索） |
 
 3. 每填一条点 **Add** 或确认，全部填完即可
 

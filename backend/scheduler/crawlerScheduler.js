@@ -8,7 +8,7 @@
  * 可通过 CRAWLER_SCHEDULE_DAY=0-6 设置星期几（0=周日，默认0）。
  * 可通过 CRAWLER_SCHEDULE_HOUR=0-23 设置几点（默认3）。
  * 可选 OVERPASS_API_URL 指定 Overpass 实例。
- * 米其林条目若仍无电话：按店名再走 OSM 检索 → 无电话且配置了 GOOGLE_PLACES_API_KEY 时用 Google Places 补全。
+ * 米其林条目若仍无电话：按店名再走一次 OSM（Overpass name~）检索补全。
  */
 import { ensureSchema } from '../db.js';
 import {
@@ -44,7 +44,7 @@ export async function runCrawlerJob() {
   crawlerState.running = true;
   crawlerState.lastError = null;
   const startedAt = new Date().toISOString();
-  console.log('[crawler-scheduler] 开始执行爬虫（Wikidata + OSM，缺电话时可选 Google）…');
+  console.log('[crawler-scheduler] 开始执行爬虫（Wikidata + OSM）…');
 
   try {
     ensureSchema();

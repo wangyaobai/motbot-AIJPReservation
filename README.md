@@ -92,7 +92,7 @@ git push -u origin main
    - `NODE_ENV` = `production`（一般会自动设置）
    - `PORT`：由 Railway 自动注入，可不填
    - `BASE_URL` = 你的 Railway 应用域名（如 `https://xxx.up.railway.app`），**开通电话服务时必填**
-   - 可选：`TWILIO_*`、`OPENAI_API_KEY`、`GOOGLE_PLACES_API_KEY`（同本地 .env）
+   - 可选：`TWILIO_*`、`OPENAI_API_KEY`（同本地 .env）
 5. **生成域名**：在 **Settings** → **Networking** → **Generate Domain**，得到 `https://xxx.up.railway.app`。将该地址填到 `BASE_URL`，以便 Twilio 回调。
 6. 部署完成后访问该域名即为预约首页，`/admin` 为后台。
 

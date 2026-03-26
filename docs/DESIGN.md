@@ -26,7 +26,7 @@
 ## 餐厅电话获取
 
 - 优先：用户直接填写餐厅电话号码（必填或从搜索选择）。
-- 可选：提供“按店名搜索”入口，后端调用 **Google Places API**（Text Search）根据店名+日本地区查询，返回名称、地址、电话；无 API 时仅支持手动输入号码。
+- 可选：提供“按店名搜索”入口；推荐数据侧可用 **OpenStreetMap / Overpass** 等开源 POI 补全名称、地址、电话；否则支持手动输入号码。
 
 ## 目录结构
 
@@ -44,7 +44,7 @@ restaurant-booking-h5/
 - `PORT`：服务端口
 - `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`：Twilio 账号与主叫号码
 - `OPENAI_API_KEY`：摘要生成
-- `GOOGLE_PLACES_API_KEY`（可选）：餐厅搜索
+- `OVERPASS_API_URL`（可选）：店铺爬虫用 OSM Overpass 端点，默认公共实例
 - `BASE_URL`：当前服务公网 URL（供 Twilio webhook 使用）
 
 ## 安全与合规
