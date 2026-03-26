@@ -58,18 +58,17 @@ export async function startTwilioCallForOrder(order) {
     WHERE id = ?
   `).run(call.sid, order.id);
 
-  // 预生成首句（典型接听语「はい」的回复），供接听后快速响应，避免 502
+  // 首句模板预生成：直接拼模板 + TTS，无需 LLM（省 4-6 秒）
   setImmediate(async () => {
     try {
-      const { getNextAiReply } = await import('./aiDialogue.js');
+      const { generateTemplateFirstMessage } = await import('./aiDialogue.js');
       const { synthesizeJaToUrl, synthesizeEnToUrl } = await import('./aliyunTts.js');
       const lang = (order.call_lang || 'ja').toLowerCase() === 'en' ? 'en' : 'ja';
-      const greeting = lang === 'ja' ? 'はい' : 'Hello';
-      const reply = await getNextAiReply({ ...order, _dialogue_lang: lang }, [{ role: 'restaurant', text_ja: greeting }], greeting);
+      const firstMsg = generateTemplateFirstMessage(order, lang);
       const ttsUrl = lang === 'en'
-        ? await synthesizeEnToUrl(reply.text_ja, baseUrl)
-        : await synthesizeJaToUrl(reply.text_ja, baseUrl);
-      setFirstMessageCache(order.order_no, { text_ja: reply.text_ja, ttsUrl, lang });
+        ? await synthesizeEnToUrl(firstMsg, baseUrl)
+        : await synthesizeJaToUrl(firstMsg, baseUrl);
+      setFirstMessageCache(order.order_no, { text_ja: firstMsg, ttsUrl, lang });
     } catch (e) {
       console.warn('[twilioCall] pre-generate first message failed', e.message);
     }

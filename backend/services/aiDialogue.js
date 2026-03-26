@@ -13,6 +13,39 @@ function formatDateJa(ymd) {
   return `${parseInt(m, 10)}月${parseInt(d, 10)}日`;
 }
 
+function formatTimeJa(timeStr) {
+  if (!timeStr) return '';
+  const parts = timeStr.split(':');
+  const h = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10) || 0;
+  if (m === 0) return `${h}時`;
+  if (m === 30) return `${h}時半`;
+  return `${h}時${m}分`;
+}
+
+/**
+ * 首句模板：直接从订单数据拼出开场白，跳过 LLM，省 4-6 秒。
+ */
+export function generateTemplateFirstMessage(order, lang = 'ja') {
+  const restaurantName = (order.restaurant_name || '').trim();
+  const firstDate = formatDateJa(order.booking_date);
+  const firstTime = order.booking_time || '';
+  const adults = order.adult_count != null ? Number(order.adult_count) : (order.party_size || 0);
+  const children = order.child_count != null ? Number(order.child_count) : 0;
+
+  if ((lang || 'ja') === 'en') {
+    const partyStr = children > 0 ? `${adults} adults and ${children} children` : `a party of ${adults}`;
+    const nameCheck = restaurantName ? `Hi, is this ${restaurantName}? ` : 'Hello. ';
+    return `${nameCheck}I'm calling on behalf of a customer to make a reservation for ${partyStr} on ${order.booking_date || ''} at ${firstTime}. Would that be available?`;
+  }
+
+  const partyStr = children > 0 ? `大人${adults}名様、お子様${children}名様` : `${adults}名様`;
+  const timeStr = formatTimeJa(firstTime);
+  const dateTimeStr = timeStr ? `${firstDate}の${timeStr}` : firstDate;
+  const nameCheck = restaurantName ? `${restaurantName}でございますか？` : '';
+  return `お電話ありがとうございます。${nameCheck}お客様のご予約を代行してお電話しております。${dateTimeStr}に${partyStr}でお願いしたいのですが、お席はございますでしょうか？`;
+}
+
 function normalizeDigits(s) {
   return (s || '').toString().replace(/\D/g, '');
 }
@@ -89,7 +122,7 @@ function containsChinese(text) {
 /**
  * DeepSeek 流式请求，收集完整回复。可减少首 token 延迟，总时长略优。
  */
-async function fetchDeepSeekStream(url, headers, body, signal) {
+async function fetchDeepSeekStream(url, headers, body, signal, onSentenceReady) {
   const resp = await fetch(url, {
     method: 'POST',
     headers,
@@ -101,6 +134,7 @@ async function fetchDeepSeekStream(url, headers, body, signal) {
   const decoder = new TextDecoder();
   let fullContent = '';
   let buffer = '';
+  let sentenceFired = false;
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -114,7 +148,16 @@ async function fetchDeepSeekStream(url, headers, body, signal) {
         try {
           const json = JSON.parse(data);
           const delta = json.choices?.[0]?.delta?.content;
-          if (delta) fullContent += delta;
+          if (delta) {
+            fullContent += delta;
+            if (onSentenceReady && !sentenceFired) {
+              const trimmed = fullContent.trim();
+              if (trimmed.length > 10 && /[。！？.!?]$/.test(trimmed)) {
+                sentenceFired = true;
+                onSentenceReady(trimmed);
+              }
+            }
+          }
         } catch {}
       }
     }
@@ -128,7 +171,7 @@ async function fetchDeepSeekStream(url, headers, body, signal) {
  * @param {string|null} lastRestaurantText - 对方（餐厅）最新一句日文（ASR 结果）
  * @returns {Promise<{ text_ja: string, done: boolean, call_result?: string }>}
  */
-export async function getNextAiReply(order, callRecords = [], lastRestaurantText = null) {
+export async function getNextAiReply(order, callRecords = [], lastRestaurantText = null, options = {}) {
   // 自动语言：默认日语；调用方可传入 order._dialogue_lang='en' 或在 callRecords 中加 lang 逻辑（当前用于测试模拟器）
   const forcedLang = (order && order._dialogue_lang) ? String(order._dialogue_lang).toLowerCase() : 'ja';
   const lang = (forcedLang === 'en') ? 'en' : 'ja';
@@ -235,7 +278,7 @@ Output only English.`;
     let raw;
     const useStream = useDeepSeek && process.env.AI_STREAM !== '0';
     if (useStream) {
-      raw = await fetchDeepSeekStream(url, headers, body, ctrl.signal);
+      raw = await fetchDeepSeekStream(url, headers, body, ctrl.signal, options.onSentenceReady);
     } else {
       const resp = await fetch(url, {
         method: 'POST',

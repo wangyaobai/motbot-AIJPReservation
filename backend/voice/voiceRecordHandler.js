@@ -5,7 +5,7 @@
 import twilio from 'twilio';
 import { getDb } from '../db.js';
 import { transcribeJaFromUrl, transcribeEnFromUrl } from '../services/aliyunAsr.js';
-import { getNextAiReply } from '../services/aiDialogue.js';
+import { getNextAiReply, generateTemplateFirstMessage } from '../services/aiDialogue.js';
 import { synthesizeJaToUrl, synthesizeEnToUrl } from '../services/aliyunTts.js';
 import { get as getFirstMessageCache, remove as removeFirstMessageCache } from '../services/firstMessageCache.js';
 
@@ -67,15 +67,26 @@ export default async function voiceRecordHandler(req, res) {
 
   let nextReply;
   let ttsUrlCached = null;
+  let earlyTtsData = null;
   const isFirstReply = callRecords.length === 1;
   const cached = isFirstReply ? getFirstMessageCache(order.order_no) : null;
   if (cached) {
     removeFirstMessageCache(order.order_no);
     nextReply = { text_ja: cached.text_ja, done: false };
     ttsUrlCached = cached.ttsUrl;
+  } else if (isFirstReply) {
+    nextReply = { text_ja: generateTemplateFirstMessage(order, lang), done: false };
+    if (debugTiming) console.log(`[voice] first message via template (no LLM)`);
   } else {
+    const synthesizeFn = lang === 'en' ? synthesizeEnToUrl : synthesizeJaToUrl;
     const t1 = debugTiming ? Date.now() : 0;
-    nextReply = await getNextAiReply(order, callRecords, lastText || null);
+    nextReply = await getNextAiReply(order, callRecords, lastText || null, {
+      onSentenceReady: (text) => {
+        if (!earlyTtsData) {
+          earlyTtsData = { text, promise: synthesizeFn(text, baseUrl).catch(() => '') };
+        }
+      }
+    });
     if (debugTiming) console.log(`[voice] LLM ${Date.now() - t1}ms`);
   }
   callRecords.push({ role: 'ai', text_ja: nextReply.text_ja });
@@ -102,10 +113,17 @@ export default async function voiceRecordHandler(req, res) {
   }
 
   const t2 = debugTiming ? Date.now() : 0;
-  const ttsUrl = ttsUrlCached || await (lang === 'en'
-    ? synthesizeEnToUrl(nextReply.text_ja, baseUrl)
-    : synthesizeJaToUrl(nextReply.text_ja, baseUrl));
-  if (debugTiming) console.log(`[voice] TTS ${Date.now() - t2}ms, total ${Date.now() - t0}ms`);
+  let ttsUrl;
+  if (ttsUrlCached) {
+    ttsUrl = ttsUrlCached;
+  } else if (earlyTtsData && earlyTtsData.text === nextReply.text_ja) {
+    ttsUrl = await earlyTtsData.promise;
+  } else {
+    ttsUrl = await (lang === 'en'
+      ? synthesizeEnToUrl(nextReply.text_ja, baseUrl)
+      : synthesizeJaToUrl(nextReply.text_ja, baseUrl));
+  }
+  if (debugTiming) console.log(`[voice] TTS ${earlyTtsData ? '(streamed) ' : ''}${Date.now() - t2}ms, total ${Date.now() - t0}ms`);
   if (ttsUrl) {
     twiml.play(ttsUrl);
   } else {
