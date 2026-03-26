@@ -188,8 +188,14 @@ router.get('/frontend-display', (req, res) => {
         if (hasManual && visible) coverSource = 'manual';
         else if (visible) coverSource = 'auto';
         return {
-          id: r.id, name: r.name, image: r.image || '', address: r.address,
-          feature: r.feature, phone: r.phone, coverSource,
+          id: r.id,
+          name: r.name,
+          image: r.image || '',
+          address: r.address,
+          feature: r.feature,
+          recommend_reason: r.recommend_reason || r.feature,
+          phone: r.phone,
+          coverSource,
         };
       });
 

@@ -2,6 +2,46 @@ import { useState, useEffect, useRef } from 'react';
 
 const FALLBACK_IMG = 'https://images.pexels.com/photos/4106483/pexels-photo-4106483.jpeg';
 
+function sourcePlatformOf(r) {
+  if (r?.source_platform) return r.source_platform;
+  if (r?.source === 'michelin') return 'wikidata_michelin';
+  if (r?.source === 'tabelog') return 'tabelog';
+  if (r?.source === 'google') return 'google';
+  return 'osm';
+}
+
+const CRAWLED_PLATFORM_FILTER_OPTS = [
+  { value: 'all', label: '全部来源' },
+  { value: 'wikidata_michelin', label: '米其林（Wikidata）' },
+  { value: 'tabelog', label: 'Tabelog 高分' },
+  { value: 'osm', label: 'OpenStreetMap' },
+  { value: 'google', label: 'Google' },
+];
+
+const PLATFORM_GROUP_LABEL = {
+  wikidata_michelin: '米其林 / Wikidata',
+  tabelog: 'Tabelog 高评价',
+  google: 'Google 补充',
+  osm: 'OpenStreetMap',
+};
+
+const PLATFORM_ORDER = ['wikidata_michelin', 'tabelog', 'google', 'osm'];
+
+function groupCrawledByPlatform(restaurants) {
+  const list = Array.isArray(restaurants) ? restaurants : [];
+  const map = new Map();
+  for (const r of list) {
+    const p = sourcePlatformOf(r);
+    if (!map.has(p)) map.set(p, []);
+    map.get(p).push(r);
+  }
+  const extra = [...map.keys()].filter((p) => !PLATFORM_ORDER.includes(p));
+  const order = [...PLATFORM_ORDER, ...extra];
+  return order
+    .filter((p) => map.get(p)?.length)
+    .map((p) => ({ platform: p, label: PLATFORM_GROUP_LABEL[p] || p, list: map.get(p) }));
+}
+
 export function AdminShops({ apiBase, adminToken }) {
   const authHeaders = (extra = {}) => ({ 'x-admin-token': adminToken || '', ...extra });
   const [subTab, setSubTab] = useState('fallback');
@@ -22,6 +62,7 @@ export function AdminShops({ apiBase, adminToken }) {
   const [crawlerStatus, setCrawlerStatus] = useState(null);
   const [crawlerRunning, setCrawlerRunning] = useState(false);
   const [crawlerMsg, setCrawlerMsg] = useState('');
+  const [crawledPlatformFilter, setCrawledPlatformFilter] = useState('all');
   const fileInputRef = useRef(null);
   const fileInputKeyRef = useRef(null);
 
@@ -145,7 +186,7 @@ export function AdminShops({ apiBase, adminToken }) {
 
   const handleSaveCover = async (cityKey, name, url) => {
     const key = `${cityKey}|${name}`;
-    if (!url?.trim()) { alert('请填写图片 URL'); return; }
+    if (!url?.trim()) { alert('请填写图片 URL，或先上传/填入当前展示图'); return; }
     const trimmed = url.trim();
     if (!trimmed.startsWith('/') && !/^https?:\/\//i.test(trimmed)) {
       alert('请输入 http(s):// 或 /api/manual-covers/...');
@@ -388,17 +429,38 @@ export function AdminShops({ apiBase, adminToken }) {
           </div>
 
           <p className="admin-desc">
-            爬取数据来自 Wikidata 米其林 + OpenStreetMap（Overpass，免费开源），请核实信息后选择店铺点击「确认进入前端展示」。
-            系统会自动将当前前端数据备份到兜底表，然后写入新数据。
+            爬取数据：Wikidata 米其林优先；可选环境变量开启 Tabelog 高分槽位；余量由 OpenStreetMap（Overpass）补足。请核实后勾选并「确认进入前端展示」。确认前会自动备份当前前端到兜底表。
+            米其林官网、TripAdvisor、携程、大众点评等需各自 API 或授权，当前未直连；可用 DeepSeek 文案兜底（环境变量 <span className="admin-inline-code">CRAWLER_DEEPSEEK_REFINE=1</span> 且配置 <span className="admin-inline-code">DEEPSEEK_API_KEY</span>）。
           </p>
 
+          <div className="admin-panel admin-panel--compact">
+            <label className="admin-filter-label">
+              <span>按来源筛选（爬取列表）</span>
+              <select
+                className="admin-filter-select"
+                value={crawledPlatformFilter}
+                onChange={(e) => setCrawledPlatformFilter(e.target.value)}
+              >
+                {CRAWLED_PLATFORM_FILTER_OPTS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+
           {crawledItems.map((g) => {
-            const michelinList = (g.restaurants || []).filter((r) => r.source === 'michelin');
-            const osmList = (g.restaurants || []).filter((r) => r.source !== 'michelin');
-            const groups = [];
-            if (michelinList.length > 0) groups.push({ label: '米其林餐厅', list: michelinList });
-            if (osmList.length > 0) groups.push({ label: 'OpenStreetMap 餐厅', list: osmList });
-            if (groups.length === 0 && g.restaurants?.length > 0) groups.push({ label: '餐厅列表', list: g.restaurants });
+            const rawList = g.restaurants || [];
+            const filtered =
+              crawledPlatformFilter === 'all'
+                ? rawList
+                : rawList.filter((r) => sourcePlatformOf(r) === crawledPlatformFilter);
+            const groups =
+              filtered.length === 0
+                ? []
+                : groupCrawledByPlatform(filtered);
+            if (rawList.length > 0 && filtered.length === 0) {
+              groups.push({ platform: '_empty', label: '当前筛选无结果', list: [] });
+            }
 
             return (
               <div key={g.cityKey} className="admin-media-city">
@@ -416,7 +478,7 @@ export function AdminShops({ apiBase, adminToken }) {
                 ) : (
                   <>
                     <div className="admin-actions" style={{ marginBottom: 8 }}>
-                      <button type="button" className="btn-outline" onClick={() => selectAllInCity(g.cityKey, g.restaurants)}>
+                      <button type="button" className="btn-outline" onClick={() => selectAllInCity(g.cityKey, filtered.length ? filtered : g.restaurants)}>
                         全选（最多10家）
                       </button>
                       <button type="button" className="btn-primary" disabled={confirmingCity === g.cityKey}
@@ -425,18 +487,24 @@ export function AdminShops({ apiBase, adminToken }) {
                       </button>
                     </div>
                     {groups.map((group) => (
-                      <div key={group.label}>
-                        {groups.length > 1 && (
-                          <h4 style={{ margin: '12px 0 6px', fontSize: '0.9rem', color: '#374151', borderBottom: '1px solid #e5e7eb', paddingBottom: 4 }}>
-                            {group.label === '米其林餐厅' ? '⭐ ' : ''}{group.label}（{group.list.length} 家）
+                      <div key={group.platform || group.label}>
+                        {group.list?.length > 0 && groups.filter((x) => x.list?.length).length > 1 && (
+                          <h4 className="admin-crawled-group-title">
+                            {group.platform === 'wikidata_michelin' ? '⭐ ' : ''}{group.label}（{group.list.length} 家）
                           </h4>
                         )}
+                        {group.list?.length === 0 && group.platform === '_empty' && (
+                          <p className="admin-media-empty" style={{ marginBottom: 8 }}>该城市在此来源下暂无条目，请切换筛选。</p>
+                        )}
                         <ul className="admin-media-list">
-                          {group.list.map((r) => {
+                          {(group.list || []).map((r) => {
                             const key = `${g.cityKey}|${r.name}`;
                             const url = urlByKey[key] ?? '';
                             const saving = savingKey === key;
                             const checked = (selectedIds[g.cityKey] || []).includes(r.id);
+                            const plat = sourcePlatformOf(r);
+                            const reason = (r.recommend_reason || r.feature || '').trim();
+                            const ds = Array.isArray(r.data_sources) ? r.data_sources.join(' · ') : '';
                             return (
                               <li key={r.id || key} className="admin-media-row">
                                 <input type="checkbox" checked={checked} onChange={() => toggleSelected(g.cityKey, r.id)}
@@ -444,29 +512,44 @@ export function AdminShops({ apiBase, adminToken }) {
                                 <div className="admin-media-thumb">
                                   <img src={r.image || FALLBACK_IMG} alt="" />
                                 </div>
-                                <div className="admin-media-info">
+                                <div className="admin-media-info admin-media-info--wide">
                                   <strong>{r.name}</strong>
-                                  {r.source === 'michelin' && <span className="admin-cover-badge badge-green">米其林</span>}
-                                  {r.source === 'osm' && (
-                                    <span className="admin-cover-badge badge-blue">OSM</span>
-                                  )}
-                                  {r.source === 'google' && r.google_rating > 0 && (
-                                    <span className="admin-cover-badge badge-blue">Google {r.google_rating}</span>
+                                  {plat === 'wikidata_michelin' && <span className="admin-cover-badge badge-green">米其林</span>}
+                                  {plat === 'tabelog' && <span className="admin-cover-badge badge-green">Tabelog</span>}
+                                  {plat === 'osm' && <span className="admin-cover-badge badge-blue">OSM</span>}
+                                  {plat === 'google' && (
+                                    <span className="admin-cover-badge badge-blue">
+                                      Google{r.google_rating > 0 ? ` ${r.google_rating}` : ''}
+                                    </span>
                                   )}
                                   {!r.has_cover && (
                                     <span className="admin-media-feature" style={{ color: '#dc2626' }}>缺封面</span>
                                   )}
-                                  {r.phone && <span className="admin-media-address">TEL: {r.phone}</span>}
-                                  <span className="admin-media-address">{r.address}</span>
+                                  {ds && <span className="admin-media-feature" style={{ color: '#64748b' }}>数据来源：{ds}</span>}
+                                  {r.phone && <span className="admin-media-address">电话：{r.phone}</span>}
+                                  <span className="admin-media-address">地址：{r.address || '—'}</span>
                                   {r.opening_hours && (
-                                    <span className="admin-media-feature" style={{ fontSize: 11, color: '#6b7280' }}>{r.opening_hours}</span>
+                                    <span className="admin-media-feature" style={{ fontSize: 11, color: '#6b7280' }}>营业：{r.opening_hours}</span>
                                   )}
-                                  <span className="admin-media-feature">{r.feature}</span>
+                                  {reason && <span className="admin-media-feature">推荐：{reason}</span>}
+                                  {r.review_snippet && (
+                                    <span className="admin-media-feature" style={{ fontStyle: 'italic' }}>评价：{r.review_snippet}</span>
+                                  )}
+                                  {r.rating_summary && (
+                                    <span className="admin-media-feature" style={{ fontSize: 11 }}>{r.rating_summary}</span>
+                                  )}
+                                  {r.tabelog_url && (
+                                    <a className="admin-media-link" href={r.tabelog_url} target="_blank" rel="noreferrer">Tabelog 页面</a>
+                                  )}
                                 </div>
-                                <div className="admin-media-form">
-                                  <input type="text" placeholder="补封面 URL" value={url}
+                                <div className="admin-media-form admin-media-form--wrap">
+                                  <input type="text" placeholder="新封面 URL 或上传" value={url}
                                     onChange={(e) => updateUrl(g.cityKey, r.name, e.target.value)}
                                     className="admin-media-input" />
+                                  <button type="button" className="btn-ghost btn-tiny" disabled={!r.image || r.image === FALLBACK_IMG}
+                                    onClick={() => updateUrl(g.cityKey, r.name, r.image || '')}>
+                                    填入当前图
+                                  </button>
                                   <button type="button" className="btn-primary" disabled={uploadingKey === key}
                                     onClick={() => handleUploadCover(g.cityKey, r.name)}>
                                     {uploadingKey === key ? '上传中…' : '上传'}

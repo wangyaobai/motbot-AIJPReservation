@@ -210,7 +210,7 @@ export function AdminMediaCover({ apiBase = API, adminToken }) {
   return (
     <div className="admin-media-cover">
       <p className="admin-desc">
-        展示前端首页各城市当前实际展示的店铺列表。标记为「缺图」的店铺不会显示在前端首页，可上传图片或填写URL补充。
+        展示前端首页各城市当前实际展示的店铺列表。缺图店铺不会出现在首页；已有封面的店铺也可在此更换 URL 或重新上传。
       </p>
       {err && <p className="form-error">{err}</p>}
       <div className="admin-panel">
@@ -263,50 +263,60 @@ export function AdminMediaCover({ apiBase = API, adminToken }) {
                 const url = urlByKey[key] ?? '';
                 const saving = savingKey === key;
                 const badge = coverSourceLabel(r.coverSource);
-                const needFill = r.coverSource === 'none';
+                const hasDisplayImg = r.image && r.coverSource !== 'none';
+                const curUrl = String(r.image || '').trim();
                 return (
                   <li key={key} className="admin-media-row">
-                    <div className="admin-media-thumb">
-                      {r.image && r.coverSource !== 'none' ? (
+                    <div className="admin-media-thumb admin-media-thumb--md">
+                      {hasDisplayImg ? (
                         <img src={r.image} alt="" />
                       ) : (
-                        <div style={{ width: 80, height: 60, background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, color: '#9ca3af', fontSize: 12 }}>
-                          缺图
-                        </div>
+                        <div className="admin-media-thumb-placeholder">缺图</div>
                       )}
                     </div>
-                    <div className="admin-media-info">
+                    <div className="admin-media-info admin-media-info--wide">
                       <strong>{r.name}</strong>
                       <span className={`admin-cover-badge ${badge.cls}`}>{badge.text}</span>
-                      {r.address && <span className="admin-media-address">{r.address}</span>}
-                      {r.feature && <span className="admin-media-feature">{r.feature}</span>}
-                    </div>
-                    <div className="admin-media-form">
-                      {needFill && (
-                        <>
-                          <input
-                            type="text"
-                            placeholder="https://... 或 /api/manual-covers/..."
-                            value={url}
-                            onChange={(e) => updateUrl(group.cityKey, r.name, e.target.value)}
-                            className="admin-media-input"
-                          />
-                          <button
-                            type="button" className="btn-primary"
-                            disabled={uploadingKey === key}
-                            onClick={() => handleUploadCover(group.cityKey, r.name)}
-                          >
-                            {uploadingKey === key ? '上传中…' : '上传图片'}
-                          </button>
-                          <button
-                            type="button" className="btn-primary"
-                            disabled={saving}
-                            onClick={() => handleSave(group.cityKey, r.name, url)}
-                          >
-                            {saving ? '保存中…' : '保存'}
-                          </button>
-                        </>
+                      {curUrl && (
+                        <span className="admin-media-current-url" title={curUrl}>
+                          当前：{curUrl.length > 56 ? `${curUrl.slice(0, 54)}…` : curUrl}
+                        </span>
                       )}
+                      {r.address && <span className="admin-media-address">{r.address}</span>}
+                      {(r.recommend_reason || r.feature) && (
+                        <span className="admin-media-feature">{r.recommend_reason || r.feature}</span>
+                      )}
+                    </div>
+                    <div className="admin-media-form admin-media-form--wrap">
+                      <input
+                        type="text"
+                        placeholder="新封面 URL（http(s) 或 /api/manual-covers/…）"
+                        value={url}
+                        onChange={(e) => updateUrl(group.cityKey, r.name, e.target.value)}
+                        className="admin-media-input"
+                      />
+                      <button
+                        type="button"
+                        className="btn-ghost btn-tiny"
+                        disabled={!curUrl}
+                        onClick={() => updateUrl(group.cityKey, r.name, curUrl)}
+                      >
+                        填入当前图
+                      </button>
+                      <button
+                        type="button" className="btn-primary"
+                        disabled={uploadingKey === key}
+                        onClick={() => handleUploadCover(group.cityKey, r.name)}
+                      >
+                        {uploadingKey === key ? '上传中…' : '上传图片'}
+                      </button>
+                      <button
+                        type="button" className="btn-primary"
+                        disabled={saving}
+                        onClick={() => handleSave(group.cityKey, r.name, url)}
+                      >
+                        {saving ? '保存中…' : '保存封面'}
+                      </button>
                       <button type="button" className="btn-danger" onClick={() => handleDeleteBest(group.cityKey, r.name)}>
                         删除
                       </button>

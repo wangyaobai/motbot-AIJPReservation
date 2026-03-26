@@ -1,5 +1,5 @@
 /**
- * 从 Wikidata 米其林 + OpenStreetMap（Overpass）爬取餐厅。
+ * 从 Wikidata 米其林 + 可选 Tabelog + OpenStreetMap（Overpass）爬取餐厅。
  * - 默认：备份 recommendations_best 到兜底表，爬取写入 recommendations_crawled，需后台确认后进入前端
  * - --auto-merge：自动合并到 recommendations_best（适合 crontab）
  * - --replace：与 --auto-merge 联用时完全覆盖，不保留旧数据
@@ -11,7 +11,7 @@
  *   node scripts/refresh-from-crawlers.js --auto-merge
  *   node scripts/refresh-from-crawlers.js --auto-merge --replace
  *
- * 可选环境变量：OVERPASS_API_URL、OVERPASS_MAX_RETRIES、CRAWLER_TARGET_PER_CITY
+ * 可选环境变量：OVERPASS_*、CRAWLER_TARGET_PER_CITY、CRAWLER_INCLUDE_TABELOG、CRAWLER_DEEPSEEK_REFINE、DEEPSEEK_API_KEY
  */
 import 'dotenv/config';
 import { ensureSchema } from '../db.js';
@@ -66,7 +66,7 @@ async function main() {
   const cap = getCrawlerTargetPerCity();
 
   ensureSchema();
-  console.log('[refresh] 开始，城市:', cities.join(', '), dryRun ? '(dry-run)' : '', replace ? '(--replace)' : '', autoMerge ? '(--auto-merge)' : '', `(Wikidata + OSM, 每城≤${cap}条)`);
+  console.log('[refresh] 开始，城市:', cities.join(', '), dryRun ? '(dry-run)' : '', replace ? '(--replace)' : '', autoMerge ? '(--auto-merge)' : '', `(米其林+可选Tabelog+OSM, 每城≤${cap}条)`);
 
   if (!dryRun) {
     const backed = backupToFallback();

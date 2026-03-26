@@ -1,13 +1,13 @@
 /**
  * 每周自动执行爬虫调度器。
- * 数据源：Wikidata 米其林 + OpenStreetMap（Overpass API，免费）。
+ * 数据源：Wikidata 米其林 + 可选 Tabelog 槽位 + OpenStreetMap（Overpass）。
  * 爬取数据只写入 recommendations_crawled，不自动合并到 recommendations_best。
  * 需管理员在后台审核后手动确认才进入前端展示。
  *
  * 可通过 DISABLE_CRAWLER_SCHEDULER=1 关闭。
  * 可通过 CRAWLER_SCHEDULE_DAY=0-6 设置星期几（0=周日，默认0）。
  * 可通过 CRAWLER_SCHEDULE_HOUR=0-23 设置几点（默认3）。
- * 可选 OVERPASS_API_URL、OVERPASS_MAX_RETRIES、CRAWLER_TARGET_PER_CITY（默认每城最多 15 条）。
+ * 可选：OVERPASS_API_URL、OVERPASS_MAX_RETRIES、CRAWLER_TARGET_PER_CITY、CRAWLER_INCLUDE_TABELOG、CRAWLER_DEEPSEEK_REFINE + DEEPSEEK_API_KEY。
  */
 import { ensureSchema } from '../db.js';
 import { writeCrawledRecommendations } from '../services/recommendationsStore.js';
@@ -35,7 +35,7 @@ export async function runCrawlerJob() {
   crawlerState.lastError = null;
   const startedAt = new Date().toISOString();
   const targetCap = getCrawlerTargetPerCity();
-  console.log(`[crawler-scheduler] 开始执行爬虫（Wikidata + OSM，每城最多 ${targetCap} 条）…`);
+  console.log(`[crawler-scheduler] 开始执行爬虫（米其林+可选Tabelog+OSM，每城最多 ${targetCap} 条）…`);
 
   try {
     ensureSchema();

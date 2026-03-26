@@ -391,7 +391,7 @@ export function HomePage() {
         if (cityZh) { keys.push(`${id}-city`); jobs.push(cityZh); }
         const addressZh = (r.address || '').trim();
         if (addressZh) { keys.push(`${id}-address`); jobs.push(addressZh); }
-        const featureZh = (r.feature || '').trim();
+        const featureZh = (r.recommend_reason || r.feature || '').trim();
         if (featureZh) { keys.push(`${id}-feature`); jobs.push(featureZh); }
         const nameRaw = r.name_en || r.nameEn || (r.name && r.name.match(/\(([^)]+)\)/)?.[1]) || r.name;
         if (nameRaw && hasCJK(nameRaw)) { keys.push(`${id}-name`); jobs.push(nameRaw); }
@@ -501,8 +501,18 @@ export function HomePage() {
                   </p>
                   <p style={{ margin: '4px 0 8px', fontSize: '0.8rem', color: 'var(--text)' }}>
                     {isEn ? 'Highlights: ' : '餐厅特色：'}
-                    {isEn ? (r.feature_en ?? (translated[`${r.id}-feature`] || '—')) : r.feature}
+                    {isEn ? (r.feature_en ?? (translated[`${r.id}-feature`] || '—')) : (r.recommend_reason || r.feature)}
                   </p>
+                  {!isEn && r.opening_hours && (
+                    <p style={{ margin: '0 0 4px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                      营业时间：{r.opening_hours}
+                    </p>
+                  )}
+                  {!isEn && r.review_snippet && (
+                    <p style={{ margin: '0 0 8px', fontSize: '0.78rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                      评价摘要：{r.review_snippet}
+                    </p>
+                  )}
                   <button
                     type="button"
                     className="btn-primary"
