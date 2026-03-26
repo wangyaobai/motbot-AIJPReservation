@@ -109,6 +109,56 @@ function elementToRestaurant(el, cityKey) {
   };
 }
 
+/** Overpass name~ 正则中的特殊字符转义 */
+function escapeOverpassRegex(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * 在城市 bbox 内按店名子串搜索餐厅（Overpass name~，不区分大小写）。
+ * 返回按「有电话优先、再按完整度」排序的列表，最多 limit 条。
+ */
+export async function searchRestaurantOSM(restaurantName, cityKey, limit = 10) {
+  const bbox = CITY_BBOX[cityKey];
+  const raw = String(restaurantName || '').trim().replace(/"/g, '');
+  if (!bbox || raw.length < 2) return [];
+
+  const slice = raw.slice(0, 48);
+  const pattern = `.*${escapeOverpassRegex(slice)}.*`;
+  const [south, west, north, east] = bbox;
+  const query = `
+[out:json][timeout:45];
+(
+  node["amenity"="restaurant"]["name"~"${pattern}",i](${south},${west},${north},${east});
+  way["amenity"="restaurant"]["name"~"${pattern}",i](${south},${west},${north},${east});
+);
+out center tags 25;
+`.trim();
+
+  try {
+    const data = await runOverpass(query);
+    const elements = data.elements || [];
+    const byNorm = new Map();
+    for (const el of elements) {
+      const r = elementToRestaurant(el, cityKey);
+      if (!r) continue;
+      const k = normName(r.name);
+      const prev = byNorm.get(k);
+      if (!prev || r._score > prev._score || (r.phone && !prev.phone)) byNorm.set(k, r);
+    }
+    const list = [...byNorm.values()].sort((a, b) => {
+      const ap = a.phone ? 1 : 0;
+      const bp = b.phone ? 1 : 0;
+      if (bp !== ap) return bp - ap;
+      return b._score - a._score;
+    });
+    return list.slice(0, Math.max(limit, 1)).map(({ _score, ...rest }) => rest);
+  } catch (e) {
+    console.warn('[osm] searchRestaurantOSM failed:', e?.message);
+    return [];
+  }
+}
+
 export async function runOverpass(query) {
   const url = overpassUrl();
   const controller = new AbortController();

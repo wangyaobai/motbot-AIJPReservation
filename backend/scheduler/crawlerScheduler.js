@@ -8,6 +8,7 @@
  * 可通过 CRAWLER_SCHEDULE_DAY=0-6 设置星期几（0=周日，默认0）。
  * 可通过 CRAWLER_SCHEDULE_HOUR=0-23 设置几点（默认3）。
  * 可选 OVERPASS_API_URL 指定 Overpass 实例。
+ * 米其林条目若仍无电话：按店名再走 OSM 检索 → 无电话且配置了 GOOGLE_PLACES_API_KEY 时用 Google Places 补全。
  */
 import { ensureSchema } from '../db.js';
 import {
@@ -43,13 +44,14 @@ export async function runCrawlerJob() {
   crawlerState.running = true;
   crawlerState.lastError = null;
   const startedAt = new Date().toISOString();
-  console.log('[crawler-scheduler] 开始执行爬虫（Wikidata 米其林 + OpenStreetMap）…');
+  console.log('[crawler-scheduler] 开始执行爬虫（Wikidata + OSM，缺电话时可选 Google）…');
 
   try {
     ensureSchema();
 
     const { queryMichelinRestaurantsJapan } = await import('../services/crawlers/wikidata-michelin.js');
     const { fetchOsmRestaurantPool, findOsmMatchForMichelin } = await import('../services/crawlers/openStreetMap.js');
+    const { enrichRestaurantContact } = await import('../services/restaurantContactHybrid.js');
 
     // 1. Wikidata 米其林餐厅名单
     let michelinByCity = {};
@@ -92,11 +94,34 @@ export async function runCrawlerJob() {
           let phone = m.phone || '';
           let address = m.address || '';
           let opening_hours = '';
+          let google_place_id = '';
+          let google_rating = 0;
+          let osm_type = match?.osm_type || '';
+          let osm_id = match?.osm_id || '';
           if (match) {
             phone = match.phone || phone;
             address = match.address || address;
             opening_hours = match.opening_hours || '';
             image = match.image || '';
+          }
+
+          if (!String(phone || '').trim()) {
+            const extra = await enrichRestaurantContact({ name: m.name, cityKey });
+            if (extra) {
+              phone = extra.phone || phone;
+              if (!address) address = extra.address || '';
+              if (!opening_hours) opening_hours = extra.opening_hours || '';
+              if (!image) image = extra.image || '';
+              if (extra.google_place_id) {
+                google_place_id = extra.google_place_id;
+                google_rating = extra.google_rating || 0;
+              }
+              if (extra.osm_id && !osm_id) {
+                osm_type = extra.osm_type || '';
+                osm_id = extra.osm_id || '';
+              }
+            }
+            await new Promise((r) => setTimeout(r, 400));
           }
 
           combined.push({
@@ -108,11 +133,11 @@ export async function runCrawlerJob() {
             call_lang: 'ja',
             source: 'michelin',
             wikidata_id: m.wikidata_id || '',
-            google_place_id: '',
-            google_rating: 0,
+            google_place_id,
+            google_rating,
             opening_hours,
-            osm_type: match?.osm_type || '',
-            osm_id: match?.osm_id || '',
+            osm_type,
+            osm_id,
           });
         }
 

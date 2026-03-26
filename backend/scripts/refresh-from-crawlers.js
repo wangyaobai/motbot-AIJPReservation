@@ -11,7 +11,7 @@
  *   node scripts/refresh-from-crawlers.js --auto-merge
  *   node scripts/refresh-from-crawlers.js --auto-merge --replace
  *
- * 可选环境变量：OVERPASS_API_URL（默认 https://overpass-api.de/api/interpreter）
+ * 可选环境变量：OVERPASS_API_URL；米其林无电话时可用 GOOGLE_PLACES_API_KEY 经 Google 补全（见 restaurantContactHybrid.js）
  */
 import 'dotenv/config';
 import { ensureSchema } from '../db.js';
@@ -28,6 +28,7 @@ import {
 import { clearRecommendationsCache } from '../routes/recommendations.js';
 import { queryMichelinRestaurantsJapan } from '../services/crawlers/wikidata-michelin.js';
 import { fetchOsmRestaurantPool, findOsmMatchForMichelin } from '../services/crawlers/openStreetMap.js';
+import { enrichRestaurantContact } from '../services/restaurantContactHybrid.js';
 
 const JP_CITIES = ['tokyo', 'osaka', 'kyoto', 'nagoya', 'kobe', 'hokkaido', 'okinawa', 'kyushu'];
 const TARGET = 15;
@@ -65,7 +66,7 @@ async function main() {
   const cities = cityArg ? [cityArg.split('=')[1]] : JP_CITIES;
 
   ensureSchema();
-  console.log('[refresh] 开始，城市:', cities.join(', '), dryRun ? '(dry-run)' : '', replace ? '(--replace)' : '', autoMerge ? '(--auto-merge)' : '', '(Wikidata + OSM)');
+  console.log('[refresh] 开始，城市:', cities.join(', '), dryRun ? '(dry-run)' : '', replace ? '(--replace)' : '', autoMerge ? '(--auto-merge)' : '', '(Wikidata + OSM + 可选 Google 补电话)');
 
   if (!dryRun) {
     const backed = backupToFallback();
@@ -113,6 +114,10 @@ async function main() {
         let phone = m.phone || '';
         let address = m.address || '';
         let opening_hours = '';
+        let google_place_id = '';
+        let google_rating = 0;
+        let osm_type = match?.osm_type || '';
+        let osm_id = match?.osm_id || '';
         if (match) {
           phone = match.phone || phone;
           address = match.address || address;
@@ -120,13 +125,32 @@ async function main() {
           image = match.image || '';
         }
 
+        if (!String(phone || '').trim()) {
+          const extra = await enrichRestaurantContact({ name: m.name, cityKey });
+          if (extra) {
+            phone = extra.phone || phone;
+            if (!address) address = extra.address || '';
+            if (!opening_hours) opening_hours = extra.opening_hours || '';
+            if (!image) image = extra.image || '';
+            if (extra.google_place_id) {
+              google_place_id = extra.google_place_id;
+              google_rating = extra.google_rating || 0;
+            }
+            if (extra.osm_id && !osm_id) {
+              osm_type = extra.osm_type || '';
+              osm_id = extra.osm_id || '';
+            }
+          }
+          await new Promise((r) => setTimeout(r, 400));
+        }
+
         combined.push({
           id: `m_${m.wikidata_id || n.slice(0, 20)}`,
           country: 'jp', cityKey, name: m.name, city: m.city || cityZh,
           phone, address, image, feature: m.feature || '米其林指南',
           call_lang: 'ja', source: 'michelin',
-          wikidata_id: m.wikidata_id || '', google_place_id: '', google_rating: 0, opening_hours,
-          osm_type: match?.osm_type || '', osm_id: match?.osm_id || '',
+          wikidata_id: m.wikidata_id || '', google_place_id, google_rating, opening_hours,
+          osm_type, osm_id,
         });
       }
 

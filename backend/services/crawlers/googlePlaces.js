@@ -157,6 +157,62 @@ export async function downloadPhoto(photoReference, saveName) {
 }
 
 /**
+ * 按店名在城市内 Text Search → Place Details，取电话/地址/营业时间；有图则下载到本地。
+ * 需 GOOGLE_PLACES_API_KEY；未配置时返回 null。
+ */
+export async function searchRestaurantGoogleByName(cityKey, restaurantName) {
+  const key = API_KEY();
+  if (!key || !String(restaurantName || '').trim()) return null;
+
+  const cityZh = CITY_ZH[cityKey] || cityKey;
+  const q = `${String(restaurantName).trim()} ${cityZh} Japan`;
+  let hits;
+  try {
+    hits = await searchRestaurants(cityKey, q, 5);
+  } catch (e) {
+    console.warn('[googlePlaces] searchRestaurantGoogleByName search:', e?.message);
+    return null;
+  }
+  if (!hits?.length) return null;
+
+  const toRow = async (h, details) => {
+    let imageUrl = '';
+    const photoRef = details.photo_reference || h.photo_reference;
+    if (photoRef) {
+      try {
+        imageUrl = await downloadPhoto(photoRef, `g_name_${cityKey}_${h.place_id}`);
+      } catch (_) {}
+    }
+    return {
+      name: details.name || h.name,
+      phone: details.phone || '',
+      address: details.address || h.address || '',
+      opening_hours: details.opening_hours || '',
+      image: imageUrl,
+      google_place_id: h.place_id,
+      google_rating: details.rating || h.rating || 0,
+      google_maps_url: details.google_maps_url || '',
+      source: 'google',
+    };
+  };
+
+  let fallback = null;
+  for (const h of hits) {
+    let details;
+    try {
+      details = await getPlaceDetails(h.place_id);
+    } catch (e) {
+      continue;
+    }
+    if (!details) continue;
+    if (details.phone) return toRow(h, details);
+    if (!fallback) fallback = await toRow(h, details);
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  return fallback;
+}
+
+/**
  * Full pipeline: search restaurants in a city, get details + download photos.
  * Returns an array of restaurant objects ready for recommendations_crawled.
  */
