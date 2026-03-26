@@ -36,11 +36,18 @@ function getClient() {
   if (client && clientKeyFingerprint === fp) return client;
 
   clientKeyFingerprint = fp;
+  // pop-core 依赖的 httpx 默认仅 3s，ECS/跨境网络易 ReadTimeout(3000)
+  const httpTimeout = (() => {
+    const n = parseInt(process.env.ALIYUN_NLS_HTTP_TIMEOUT_MS, 10);
+    if (Number.isFinite(n) && n >= 5000 && n <= 120000) return n;
+    return 25000;
+  })();
   client = new RPCClient({
     endpoint: metaEndpoint(getRegion()),
     apiVersion: '2019-02-28',
     accessKeyId,
     accessKeySecret,
+    opts: { timeout: httpTimeout },
   });
   return client;
 }
