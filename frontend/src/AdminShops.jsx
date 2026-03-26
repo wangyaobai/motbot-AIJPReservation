@@ -17,6 +17,9 @@ export function AdminShops({ apiBase, adminToken }) {
   const [confirmingCity, setConfirmingCity] = useState(null);
   const [selectedIds, setSelectedIds] = useState({});
   const [backupMsg, setBackupMsg] = useState('');
+  const [crawlerStatus, setCrawlerStatus] = useState(null);
+  const [crawlerRunning, setCrawlerRunning] = useState(false);
+  const [crawlerMsg, setCrawlerMsg] = useState('');
   const fileInputRef = useRef(null);
   const fileInputKeyRef = useRef(null);
 
@@ -40,11 +43,20 @@ export function AdminShops({ apiBase, adminToken }) {
     setCrawledItems(data.items || []);
   };
 
+  const fetchCrawlerStatus = async () => {
+    try {
+      const res = await fetch(`${apiBase}/admin/crawler-status`, { headers: authHeaders() });
+      const data = await assertOkJson(res, '');
+      setCrawlerStatus(data);
+      setCrawlerRunning(data.running || false);
+    } catch {}
+  };
+
   const fetchAll = async () => {
     setErr('');
     setLoading(true);
     try {
-      await Promise.all([fetchFallback(), fetchCrawled()]);
+      await Promise.all([fetchFallback(), fetchCrawled(), fetchCrawlerStatus()]);
     } catch (e) {
       setErr(e.message || '加载失败');
     } finally {
@@ -52,9 +64,15 @@ export function AdminShops({ apiBase, adminToken }) {
     }
   };
 
+  useEffect(() => { fetchAll(); }, [apiBase]);
+
   useEffect(() => {
-    fetchAll();
-  }, [apiBase]);
+    if (!crawlerRunning) return;
+    const timer = setInterval(async () => {
+      await fetchCrawlerStatus();
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [crawlerRunning]);
 
   const runBackup = async () => {
     setBackupMsg('');
@@ -68,6 +86,19 @@ export function AdminShops({ apiBase, adminToken }) {
     }
   };
 
+  const runCrawler = async () => {
+    setCrawlerMsg('');
+    setCrawlerRunning(true);
+    try {
+      const res = await fetch(`${apiBase}/admin/run-crawler`, { method: 'POST', headers: authHeaders() });
+      const data = await assertOkJson(res, '启动爬虫失败');
+      setCrawlerMsg(data.message || '爬虫已启动');
+    } catch (e) {
+      setCrawlerMsg(e.message || '启动爬虫失败');
+      setCrawlerRunning(false);
+    }
+  };
+
   const handleSaveFallback = async (cityKey, name, url, address, phone) => {
     const key = `${cityKey}|${name}`;
     setSavingKey(key);
@@ -75,13 +106,7 @@ export function AdminShops({ apiBase, adminToken }) {
       const res = await fetch(`${apiBase}/admin/shops/fallback/save`, {
         method: 'POST',
         headers: authHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({
-          cityKey,
-          name: name.trim(),
-          image_url: url?.trim() || '',
-          address: address?.trim(),
-          phone: phone?.trim(),
-        }),
+        body: JSON.stringify({ cityKey, name: name.trim(), image_url: url?.trim() || '', address: address?.trim(), phone: phone?.trim() }),
       });
       await assertOkJson(res, '保存失败');
       setUrlByKey((prev) => ({ ...prev, [key]: '' }));
@@ -95,10 +120,7 @@ export function AdminShops({ apiBase, adminToken }) {
 
   const handleSaveCover = async (cityKey, name, url) => {
     const key = `${cityKey}|${name}`;
-    if (!url?.trim()) {
-      alert('请填写图片 URL');
-      return;
-    }
+    if (!url?.trim()) { alert('请填写图片 URL'); return; }
     const trimmed = url.trim();
     if (!trimmed.startsWith('/') && !/^https?:\/\//i.test(trimmed)) {
       alert('请输入 http(s):// 或 /api/manual-covers/...');
@@ -137,10 +159,7 @@ export function AdminShops({ apiBase, adminToken }) {
     if (!file || !key) return;
     const [cityKey, ...parts] = key.split('|');
     const name = parts.join('|');
-    if (!file.type.startsWith('image/')) {
-      alert('请选择图片文件');
-      return;
-    }
+    if (!file.type.startsWith('image/')) { alert('请选择图片文件'); return; }
     setUploadingKey(key);
     try {
       const form = new FormData();
@@ -189,24 +208,19 @@ export function AdminShops({ apiBase, adminToken }) {
     }
   };
 
+  const dayName = (d) => ['日', '一', '二', '三', '四', '五', '六'][d] || d;
+  const fallbackHasData = fallbackItems.some((g) => g.restaurants?.length > 0);
+
   if (loading) return <p className="admin-media-loading">加载店铺数据…</p>;
 
   return (
     <div className="admin-shops">
       <nav className="admin-subtabs">
-        <button
-          type="button"
-          className={subTab === 'fallback' ? 'active' : ''}
-          onClick={() => setSubTab('fallback')}
-        >
+        <button type="button" className={subTab === 'fallback' ? 'active' : ''} onClick={() => setSubTab('fallback')}>
           兜底店铺
         </button>
-        <button
-          type="button"
-          className={subTab === 'crawled' ? 'active' : ''}
-          onClick={() => setSubTab('crawled')}
-        >
-          新爬取数据
+        <button type="button" className={subTab === 'crawled' ? 'active' : ''} onClick={() => setSubTab('crawled')}>
+          爬取数据
         </button>
       </nav>
 
@@ -214,106 +228,113 @@ export function AdminShops({ apiBase, adminToken }) {
 
       {subTab === 'fallback' && (
         <div className="admin-shops-fallback">
-          <p className="admin-desc">
-            兜底店铺为 refresh 前的备份数据，可管理封面和店铺信息。首次使用请先点击「备份当前到兜底」。
-          </p>
           <div className="admin-panel">
             <div className="admin-actions">
               <button type="button" className="btn-primary" onClick={runBackup}>
                 备份当前到兜底
               </button>
-              <button type="button" className="btn-ghost" onClick={fetchAll}>
-                刷新
-              </button>
+              <button type="button" className="btn-ghost" onClick={fetchAll}>刷新</button>
               {backupMsg && <span className="admin-msg-success">{backupMsg}</span>}
             </div>
           </div>
-          {fallbackItems.map((g) => (
-            <div key={g.cityKey} className="admin-media-city">
-              <h3>{g.cityZh}（{g.cityKey}）</h3>
-              {!g.restaurants?.length ? (
-                <p className="admin-media-empty">暂无兜底数据，请先备份</p>
-              ) : (
-                <ul className="admin-media-list">
-                  {g.restaurants.map((r) => {
-                    const key = `${g.cityKey}|${r.name}`;
-                    const url = urlByKey[key] ?? '';
-                    const addr = addrByKey[key] ?? r.address ?? '';
-                    const phone = phoneByKey[key] ?? r.phone ?? '';
-                    const saving = savingKey === key;
-                    return (
-                      <li key={key} className="admin-media-row">
-                        <div className="admin-media-thumb">
-                          <img src={r.image || FALLBACK_IMG} alt="" />
-                        </div>
-                        <div className="admin-media-info" style={{ flex: '1 1 200px' }}>
-                          <strong>{r.name}</strong>
-                          <input
-                            type="text"
-                            placeholder="地址"
-                            value={addr}
-                            onChange={(e) => setAddrByKey((p) => ({ ...p, [key]: e.target.value }))}
-                            className="admin-media-input"
-                            style={{ width: '100%', marginTop: 4, minWidth: 0 }}
-                          />
-                          <input
-                            type="text"
-                            placeholder="电话"
-                            value={phone}
-                            onChange={(e) => setPhoneByKey((p) => ({ ...p, [key]: e.target.value }))}
-                            className="admin-media-input"
-                            style={{ width: '100%', marginTop: 4, minWidth: 0 }}
-                          />
-                        </div>
-                        <div className="admin-media-form">
-                          <input
-                            type="text"
-                            placeholder="封面 URL"
-                            value={url}
-                            onChange={(e) => updateUrl(g.cityKey, r.name, e.target.value)}
-                            className="admin-media-input"
-                          />
-                          <button
-                            type="button"
-                            className="btn-primary"
-                            disabled={uploadingKey === key}
-                            onClick={() => handleUploadCover(g.cityKey, r.name)}
-                          >
-                            {uploadingKey === key ? '上传中…' : '上传'}
-                          </button>
-                          <button
-                            type="button"
-                            className="btn-primary"
-                            disabled={saving}
-                            onClick={() =>
-                              handleSaveFallback(g.cityKey, r.name, url || r.image, addr, phone)
-                            }
-                          >
-                            {saving ? '保存中…' : '保存'}
-                          </button>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
+          {!fallbackHasData ? (
+            <div className="admin-panel" style={{ textAlign: 'center', padding: '40px 20px' }}>
+              <p style={{ fontSize: '1.1rem', color: '#6b7280', marginBottom: 16 }}>
+                兜底店铺为空。点击上方「备份当前到兜底」将当前前端展示的店铺数据备份到兜底表。
+              </p>
+              <p style={{ fontSize: '0.85rem', color: '#9ca3af' }}>
+                兜底数据用于爬虫更新后如果新数据有问题时，可恢复到之前的稳定版本。
+              </p>
             </div>
-          ))}
+          ) : (
+            fallbackItems.map((g) => (
+              <div key={g.cityKey} className="admin-media-city">
+                <h3>
+                  {g.cityZh}（{g.cityKey}）
+                  {g.updatedAt && <span className="admin-media-count"> 更新于 {g.updatedAt}</span>}
+                </h3>
+                {!g.restaurants?.length ? (
+                  <p className="admin-media-empty">暂无兜底数据</p>
+                ) : (
+                  <ul className="admin-media-list">
+                    {g.restaurants.map((r) => {
+                      const key = `${g.cityKey}|${r.name}`;
+                      const url = urlByKey[key] ?? '';
+                      const addr = addrByKey[key] ?? r.address ?? '';
+                      const phone = phoneByKey[key] ?? r.phone ?? '';
+                      const saving = savingKey === key;
+                      return (
+                        <li key={key} className="admin-media-row">
+                          <div className="admin-media-thumb">
+                            <img src={r.image || FALLBACK_IMG} alt="" />
+                          </div>
+                          <div className="admin-media-info" style={{ flex: '1 1 200px' }}>
+                            <strong>{r.name}</strong>
+                            <input type="text" placeholder="地址" value={addr}
+                              onChange={(e) => setAddrByKey((p) => ({ ...p, [key]: e.target.value }))}
+                              className="admin-media-input" style={{ width: '100%', marginTop: 4, minWidth: 0 }} />
+                            <input type="text" placeholder="电话" value={phone}
+                              onChange={(e) => setPhoneByKey((p) => ({ ...p, [key]: e.target.value }))}
+                              className="admin-media-input" style={{ width: '100%', marginTop: 4, minWidth: 0 }} />
+                          </div>
+                          <div className="admin-media-form">
+                            <input type="text" placeholder="封面 URL" value={url}
+                              onChange={(e) => updateUrl(g.cityKey, r.name, e.target.value)}
+                              className="admin-media-input" />
+                            <button type="button" className="btn-primary" disabled={uploadingKey === key}
+                              onClick={() => handleUploadCover(g.cityKey, r.name)}>
+                              {uploadingKey === key ? '上传中…' : '上传'}
+                            </button>
+                            <button type="button" className="btn-primary" disabled={saving}
+                              onClick={() => handleSaveFallback(g.cityKey, r.name, url || r.image, addr, phone)}>
+                              {saving ? '保存中…' : '保存'}
+                            </button>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            ))
+          )}
         </div>
       )}
 
       {subTab === 'crawled' && (
         <div className="admin-shops-crawled">
-          <p className="admin-desc">
-            新爬取数据来自 Tabelog/Wikidata，缺封面的可在此补填。人工确认后进入前端展示。
-          </p>
           <div className="admin-panel">
             <div className="admin-actions">
-              <button type="button" className="btn-ghost" onClick={fetchAll}>
+              <button type="button" className="btn-primary" disabled={crawlerRunning} onClick={runCrawler}>
+                {crawlerRunning ? '爬虫运行中…' : '立即执行爬虫'}
+              </button>
+              <button type="button" className="btn-ghost" onClick={() => { fetchCrawled(); fetchCrawlerStatus(); }}>
                 刷新
               </button>
             </div>
+            {crawlerMsg && <p className="admin-msg">{crawlerMsg}</p>}
+            {crawlerStatus && (
+              <div className="admin-crawler-status">
+                <span>
+                  自动调度：每周{dayName(crawlerStatus.scheduledDay)} {crawlerStatus.scheduledHour}:00
+                </span>
+                {crawlerStatus.lastRunAt && (
+                  <span>上次执行：{crawlerStatus.lastRunAt}</span>
+                )}
+                {crawlerStatus.running && (
+                  <span style={{ color: '#2563eb', fontWeight: 600 }}>正在运行中…</span>
+                )}
+                {crawlerStatus.lastError && (
+                  <span style={{ color: '#dc2626' }}>上次错误：{crawlerStatus.lastError}</span>
+                )}
+              </div>
+            )}
           </div>
+
+          <p className="admin-desc">
+            爬取数据来自 Tabelog/Wikidata，缺封面的可补填。选择后点击「确认进入前端展示」写入前端数据。
+          </p>
+
           {crawledItems.map((g) => (
             <div key={g.cityKey} className="admin-media-city">
               <h3>
@@ -323,28 +344,18 @@ export function AdminShops({ apiBase, adminToken }) {
                     缺封面 {g.noCoverCount} 家
                   </span>
                 )}
-                {g.crawledAt && (
-                  <span className="admin-media-count">爬取于 {g.crawledAt}</span>
-                )}
+                {g.crawledAt && <span className="admin-media-count"> 爬取于 {g.crawledAt}</span>}
               </h3>
               {!g.restaurants?.length ? (
-                <p className="admin-media-empty">暂无爬取数据，请运行 npm run refresh-crawlers</p>
+                <p className="admin-media-empty">暂无爬取数据，请点击上方「立即执行爬虫」</p>
               ) : (
                 <>
                   <div className="admin-actions" style={{ marginBottom: 8 }}>
-                    <button
-                      type="button"
-                      className="btn-primary"
-                      onClick={() => selectAllInCity(g.cityKey, g.restaurants)}
-                    >
+                    <button type="button" className="btn-outline" onClick={() => selectAllInCity(g.cityKey, g.restaurants)}>
                       全选（最多10家）
                     </button>
-                    <button
-                      type="button"
-                      className="btn-primary"
-                      disabled={confirmingCity === g.cityKey}
-                      onClick={() => handleConfirm(g.cityKey)}
-                    >
+                    <button type="button" className="btn-primary" disabled={confirmingCity === g.cityKey}
+                      onClick={() => handleConfirm(g.cityKey)}>
                       {confirmingCity === g.cityKey ? '确认中…' : '确认进入前端展示'}
                     </button>
                   </div>
@@ -356,52 +367,32 @@ export function AdminShops({ apiBase, adminToken }) {
                       const checked = (selectedIds[g.cityKey] || []).includes(r.id);
                       return (
                         <li key={r.id || key} className="admin-media-row">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => toggleSelected(g.cityKey, r.id)}
-                            style={{ marginRight: 8 }}
-                          />
+                          <input type="checkbox" checked={checked} onChange={() => toggleSelected(g.cityKey, r.id)}
+                            style={{ marginRight: 8 }} />
                           <div className="admin-media-thumb">
                             <img src={r.image || FALLBACK_IMG} alt="" />
                           </div>
                           <div className="admin-media-info">
                             <strong>{r.name}</strong>
                             {!r.has_cover && (
-                              <span className="admin-media-feature" style={{ color: '#dc2626' }}>
-                                缺封面
-                              </span>
+                              <span className="admin-media-feature" style={{ color: '#dc2626' }}>缺封面</span>
                             )}
                             <span className="admin-media-address">{r.address}</span>
                             <span className="admin-media-feature">{r.feature}</span>
                             {r.tabelog_url && (
-                              <a href={r.tabelog_url} target="_blank" rel="noreferrer" style={{ fontSize: 12 }}>
-                                Tabelog
-                              </a>
+                              <a href={r.tabelog_url} target="_blank" rel="noreferrer" style={{ fontSize: 12 }}>Tabelog</a>
                             )}
                           </div>
                           <div className="admin-media-form">
-                            <input
-                              type="text"
-                              placeholder="补封面 URL"
-                              value={url}
+                            <input type="text" placeholder="补封面 URL" value={url}
                               onChange={(e) => updateUrl(g.cityKey, r.name, e.target.value)}
-                              className="admin-media-input"
-                            />
-                            <button
-                              type="button"
-                              className="btn-primary"
-                              disabled={uploadingKey === key}
-                              onClick={() => handleUploadCover(g.cityKey, r.name)}
-                            >
+                              className="admin-media-input" />
+                            <button type="button" className="btn-primary" disabled={uploadingKey === key}
+                              onClick={() => handleUploadCover(g.cityKey, r.name)}>
                               {uploadingKey === key ? '上传中…' : '上传'}
                             </button>
-                            <button
-                              type="button"
-                              className="btn-primary"
-                              disabled={saving}
-                              onClick={() => handleSaveCover(g.cityKey, r.name, url)}
-                            >
+                            <button type="button" className="btn-primary" disabled={saving}
+                              onClick={() => handleSaveCover(g.cityKey, r.name, url)}>
                               {saving ? '保存中…' : '保存封面'}
                             </button>
                           </div>
@@ -416,13 +407,8 @@ export function AdminShops({ apiBase, adminToken }) {
         </div>
       )}
 
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/jpeg,image/png,image/webp"
-        style={{ display: 'none' }}
-        onChange={onFileSelect}
-      />
+      <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp"
+        style={{ display: 'none' }} onChange={onFileSelect} />
     </div>
   );
 }

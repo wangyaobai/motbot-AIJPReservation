@@ -4,20 +4,25 @@ const API = import.meta.env.VITE_API_BASE || '/api';
 
 export function AdminMediaCover({ apiBase = API, adminToken }) {
   const authHeaders = (extra = {}) => ({ 'x-admin-token': adminToken || '', ...extra });
-  const [items, setItems] = useState([]);
+
+  const [displayItems, setDisplayItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
+
   const [urlByKey, setUrlByKey] = useState({});
   const [savingKey, setSavingKey] = useState(null);
+  const [uploadingKey, setUploadingKey] = useState(null);
+
   const [refineMsg, setRefineMsg] = useState('');
   const [refining, setRefining] = useState(false);
-  const [uploadingKey, setUploadingKey] = useState(null);
   const [localizeMsg, setLocalizeMsg] = useState('');
   const [localizing, setLocalizing] = useState(false);
+
+  const [dupOpen, setDupOpen] = useState(false);
   const [dupLoading, setDupLoading] = useState(false);
   const [dupErr, setDupErr] = useState('');
   const [dupGroups, setDupGroups] = useState([]);
-  const [dupQuery, setDupQuery] = useState(null);
+
   const fileInputRef = useRef(null);
   const fileInputKeyRef = useRef(null);
 
@@ -39,40 +44,29 @@ export function AdminMediaCover({ apiBase = API, adminToken }) {
       throw new Error(data?.message || fallbackMsg || `请求失败（HTTP ${res.status}）`);
     }
     const snippet = String(text || '').slice(0, 200);
-    throw new Error(
-      `请求返回非JSON（HTTP ${res.status}）。` +
-        (snippet ? `返回片段：${snippet}` : '')
-    );
+    throw new Error(`请求返回非JSON（HTTP ${res.status}）。` + (snippet ? `返回片段：${snippet}` : ''));
   };
 
-  const fetchList = async () => {
+  const fetchDisplay = async () => {
     setErr('');
     setLoading(true);
     try {
-      const res = await fetch(`${apiBase}/admin/restaurants-without-cover`, { headers: authHeaders() });
+      const res = await fetch(`${apiBase}/admin/frontend-display`, { headers: authHeaders() });
       const data = await assertOkJson(res, '加载失败');
-      setItems(data.items || []);
-      setUrlByKey({});
-      if (data.items && data.items.length > 0) setErr('');
-      else setErr(data.message || '');
+      setDisplayItems(data.items || []);
     } catch (e) {
       setErr(e.message || '加载失败');
-      setItems([]);
+      setDisplayItems([]);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchList();
-  }, [apiBase]);
+  useEffect(() => { fetchDisplay(); }, [apiBase]);
 
   const handleSave = async (cityKey, name, url) => {
     const key = `${cityKey}|${name}`;
-    if (!url || !url.trim()) {
-      alert('请填写图片 URL');
-      return;
-    }
+    if (!url || !url.trim()) { alert('请填写图片 URL'); return; }
     const trimmed = url.trim();
     if (!trimmed.startsWith('/') && !/^https?:\/\//i.test(trimmed)) {
       alert('请输入以 http(s):// 开头的链接，或使用「上传图片」得到本机地址');
@@ -83,21 +77,11 @@ export function AdminMediaCover({ apiBase = API, adminToken }) {
       const res = await fetch(`${apiBase}/admin/media/manual-image`, {
         method: 'POST',
         headers: authHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({
-          cityKey,
-          name: name.trim(),
-          image_url: trimmed,
-          enabled: 1,
-        }),
+        body: JSON.stringify({ cityKey, name: name.trim(), image_url: trimmed, enabled: 1 }),
       });
       await assertOkJson(res, '保存失败');
       setUrlByKey((prev) => ({ ...prev, [key]: '' }));
-      fetchList();
-      // 如果当前正在做“重复封面排查”，保存成功后自动刷新重复列表，
-      // 使已修复（不再重复）的餐厅/分组自动从页面消失。
-      if (dupQuery) {
-        fetchDuplicates(dupQuery).catch(() => {});
-      }
+      fetchDisplay();
     } catch (e) {
       alert(e.message || '保存失败');
     } finally {
@@ -121,78 +105,20 @@ export function AdminMediaCover({ apiBase = API, adminToken }) {
     if (!file || !key) return;
     const [cityKey, ...nameParts] = key.split('|');
     const name = nameParts.join('|');
-    if (!file.type.startsWith('image/')) {
-      alert('请选择图片文件（jpg/png/webp）');
-      return;
-    }
+    if (!file.type.startsWith('image/')) { alert('请选择图片文件（jpg/png/webp）'); return; }
     setUploadingKey(key);
     try {
       const form = new FormData();
       form.append('cover', file);
-      const res = await fetch(`${apiBase}/admin/media/upload-cover`, { method: 'POST', headers: { 'x-admin-token': adminToken || '' }, body: form });
+      const res = await fetch(`${apiBase}/admin/media/upload-cover`, {
+        method: 'POST', headers: { 'x-admin-token': adminToken || '' }, body: form,
+      });
       const data = await assertOkJson(res, '上传失败');
       updateUrl(cityKey, name, data.url || '');
     } catch (err) {
       alert(err.message || '上传失败');
     } finally {
       setUploadingKey(null);
-    }
-  };
-
-  const runLocalize = async () => {
-    setLocalizing(true);
-    setLocalizeMsg('');
-    try {
-      const res = await fetch(`${apiBase}/admin/media/localize-covers`, {
-        method: 'POST',
-        headers: authHeaders(),
-      });
-      await assertOkJson(res, '本地化失败（可能超时或服务异常）');
-      setLocalizeMsg('已开始在后台下载外链封面到服务器，请稍候…');
-
-      const poll = async () => {
-        const stRes = await fetch(`${apiBase}/admin/media/localize-covers/status`, {
-          headers: authHeaders(),
-        }).catch(() => null);
-        const st = stRes ? await readApiResponse(stRes).then((x) => x.data).catch(() => null) : null;
-        if (!st?.ok) return;
-        const msg = st.running
-          ? `本地化中… ${st.localized ?? 0}/${st.total ?? 0}（失败 ${st.failed ?? 0}）`
-          : `本地化完成：已保存 ${st.localized ?? 0}/${st.total ?? 0}（失败 ${st.failed ?? 0}）${st.lastError ? `；错误：${st.lastError}` : ''}`;
-        setLocalizeMsg(msg);
-        if (st.running) {
-          setTimeout(poll, 2000);
-        } else {
-          fetchList();
-        }
-      };
-      setTimeout(poll, 800);
-    } catch (e) {
-      setLocalizeMsg(e.message || '本地化失败');
-    } finally {
-      setLocalizing(false);
-    }
-  };
-
-  const fetchDuplicates = async ({ url, prefix } = {}) => {
-    setDupErr('');
-    setDupGroups([]);
-    setDupLoading(true);
-    try {
-      const qs = new URLSearchParams();
-      if (url) qs.set('url', url);
-      else qs.set('prefix', prefix || '/api/manual-covers/best');
-      setDupQuery(url ? { url } : { prefix: prefix || '/api/manual-covers/best' });
-      const res = await fetch(`${apiBase}/admin/media/duplicate-manual-covers?${qs.toString()}`, {
-        headers: authHeaders(),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!data.ok) throw new Error(data.message || '查询失败');
-      setDupGroups(Array.isArray(data.groups) ? data.groups : []);
-    } catch (e) {
-      setDupErr(e.message || '查询失败');
-    } finally {
-      setDupLoading(false);
     }
   };
 
@@ -203,8 +129,8 @@ export function AdminMediaCover({ apiBase = API, adminToken }) {
       const res = await fetch(`${apiBase}/admin/refine-recommendation-images`, { method: 'POST', headers: authHeaders() });
       const { data } = await readApiResponse(res);
       if (data?.ok) {
-        setRefineMsg(data.message || '已开始后台补齐，约 1～2 分钟后请点击刷新查看。');
-        setTimeout(() => fetchList(), 95000);
+        setRefineMsg(data.message || '已开始后台补齐，约 1~2 分钟后请刷新查看。');
+        setTimeout(() => fetchDisplay(), 95000);
       } else {
         setRefineMsg(data?.message || '操作失败');
       }
@@ -215,27 +141,61 @@ export function AdminMediaCover({ apiBase = API, adminToken }) {
     }
   };
 
-  if (loading) return <p className="admin-media-loading">加载无封面餐厅列表…</p>;
+  const runLocalize = async () => {
+    setLocalizing(true);
+    setLocalizeMsg('');
+    try {
+      const res = await fetch(`${apiBase}/admin/media/localize-covers`, { method: 'POST', headers: authHeaders() });
+      await assertOkJson(res, '本地化失败');
+      setLocalizeMsg('已开始在后台下载外链封面到服务器，请稍候…');
+      const poll = async () => {
+        const stRes = await fetch(`${apiBase}/admin/media/localize-covers/status`, { headers: authHeaders() }).catch(() => null);
+        const st = stRes ? await readApiResponse(stRes).then((x) => x.data).catch(() => null) : null;
+        if (!st?.ok) return;
+        const msg = st.running
+          ? `本地化中… ${st.localized ?? 0}/${st.total ?? 0}（失败 ${st.failed ?? 0}）`
+          : `本地化完成：已保存 ${st.localized ?? 0}/${st.total ?? 0}（失败 ${st.failed ?? 0}）${st.lastError ? `；错误：${st.lastError}` : ''}`;
+        setLocalizeMsg(msg);
+        if (st.running) setTimeout(poll, 2000);
+        else fetchDisplay();
+      };
+      setTimeout(poll, 800);
+    } catch (e) {
+      setLocalizeMsg(e.message || '本地化失败');
+    } finally {
+      setLocalizing(false);
+    }
+  };
 
-  const total = items.reduce((n, g) => n + (g.restaurants?.length || 0), 0);
-  if (items.length === 0) {
-    return (
-      <div className="admin-media-cover">
-        {err ? (
-          <p className="admin-media-empty" style={{ whiteSpace: 'pre-wrap' }}>{err}</p>
-        ) : (
-          <p className="admin-media-empty">当前没有需要填写封面图的餐厅。</p>
-        )}
-        <button type="button" className="btn-refresh" onClick={fetchList}>刷新</button>
-      </div>
-    );
-  }
+  const fetchDuplicates = async () => {
+    setDupErr('');
+    setDupGroups([]);
+    setDupLoading(true);
+    try {
+      const qs = new URLSearchParams({ prefix: '/api/manual-covers/best' });
+      const res = await fetch(`${apiBase}/admin/media/duplicate-manual-covers?${qs.toString()}`, { headers: authHeaders() });
+      const data = await res.json().catch(() => ({}));
+      if (!data.ok) throw new Error(data.message || '查询失败');
+      setDupGroups(Array.isArray(data.groups) ? data.groups : []);
+    } catch (e) {
+      setDupErr(e.message || '查询失败');
+    } finally {
+      setDupLoading(false);
+    }
+  };
+
+  const coverSourceLabel = (src) => {
+    if (src === 'manual') return { text: '手动', cls: 'badge-green' };
+    if (src === 'auto') return { text: '自动', cls: 'badge-blue' };
+    return { text: '缺图', cls: 'badge-red' };
+  };
+
+  if (loading) return <p className="admin-media-loading">加载中…</p>;
 
   return (
     <div className="admin-media-cover">
       <p className="admin-desc">
-        {total > 0 ? `共 ${total} 家餐厅可补充封面。` : '下方为各城市；暂无数据的城市请先访问首页对应 Tab 或运行 warm 脚本生成数据。'}
-        不足 10 家的城市会列出该城全部未填手动图的店（包括“有链接但前端可能加载失败”的图源），可粘贴外链，或使用「上传图片」存到服务器（避免外链失效）。
+        展示前端首页各城市当前实际展示的店铺列表。标记为「缺图」的店铺不会显示在前端首页，可上传图片或填写URL补充。
       </p>
       {err && <p className="form-error">{err}</p>}
       <div className="admin-panel">
@@ -243,7 +203,7 @@ export function AdminMediaCover({ apiBase = API, adminToken }) {
           <button type="button" className="btn-primary" disabled={refining} onClick={runRefine}>
             {refining ? '提交中…' : '自动补齐封面图'}
           </button>
-          <button type="button" className="btn-ghost" onClick={fetchList} disabled={loading}>
+          <button type="button" className="btn-ghost" onClick={fetchDisplay} disabled={loading}>
             {loading ? '加载中…' : '刷新列表'}
           </button>
           <button type="button" className="btn-outline" disabled={localizing} onClick={runLocalize}>
@@ -252,79 +212,7 @@ export function AdminMediaCover({ apiBase = API, adminToken }) {
         </div>
         {refineMsg && <p className="admin-msg">{refineMsg}</p>}
         {localizeMsg && <p className="admin-msg">{localizeMsg}</p>}
-        <div className="admin-actions">
-          <button type="button" className="btn-outline" disabled={dupLoading} onClick={() => fetchDuplicates()} title="找出重复封面">
-            {dupLoading ? '查询重复中…' : '查找重复封面（串图排查）'}
-          </button>
-          <button type="button" className="btn-ghost" disabled={dupLoading} onClick={() => fetchDuplicates({ url: '/api/manual-covers/best________.webp' })}>
-            {dupLoading ? '查询中…' : '只查 best________.webp'}
-          </button>
-        </div>
       </div>
-      {dupErr && <p className="form-error">{dupErr}</p>}
-      {dupGroups && dupGroups.length > 0 && (
-        <div className="admin-media-city">
-          <h3>重复封面排查（共 {dupGroups.length} 组）</h3>
-          {dupGroups.map((g) => (
-            <div key={g.manual_image_url} className="admin-panel" style={{ padding: 14 }}>
-              <div className="admin-media-feature" style={{ marginBottom: 8, wordBreak: 'break-all' }}>
-                <strong>URL：</strong>{g.manual_image_url}（重复 {g.cnt}）
-              </div>
-              <ul className="admin-media-list">
-                {(g.items || []).map((it) => {
-                  const cityKey = it.cityKey || 'tokyo';
-                  const name = it.restaurant_name;
-                  const key = `${cityKey}|${name}`;
-                  const url = urlByKey[key] ?? '';
-                  const saving = savingKey === key;
-                  return (
-                    <li key={it.cache_key || key} className="admin-media-row">
-                      <div className="admin-media-thumb">
-                        <img src={g.manual_image_url} alt="" />
-                      </div>
-                      <div className="admin-media-info">
-                        <strong>{name}</strong>
-                        <span className="admin-media-feature" style={{ color: '#a16207' }}>
-                          当前手动图：{it.manual_image_url}
-                        </span>
-                        <span className="admin-media-feature">
-                          城市：{it.city_hint}{it.cityKey ? `（${it.cityKey}）` : ''}
-                        </span>
-                      </div>
-                      <div className="admin-media-form">
-                        <input
-                          type="text"
-                          placeholder="上传图片后会自动填入 /api/manual-covers/..."
-                          value={url}
-                          onChange={(e) => updateUrl(cityKey, name, e.target.value)}
-                          className="admin-media-input"
-                        />
-                        <button
-                          type="button"
-                          className="btn-primary"
-                          disabled={uploadingKey === key}
-                          onClick={() => handleUploadCover(cityKey, name)}
-                          title="上传图片到服务器并写入本地 URL"
-                        >
-                          {uploadingKey === key ? '上传中…' : '上传图片'}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn-primary"
-                          disabled={saving}
-                          onClick={() => handleSave(cityKey, name, url)}
-                        >
-                          {saving ? '保存中…' : '保存'}
-                        </button>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          ))}
-        </div>
-      )}
 
       <input
         ref={fileInputRef}
@@ -333,80 +221,148 @@ export function AdminMediaCover({ apiBase = API, adminToken }) {
         style={{ display: 'none' }}
         onChange={onFileSelect}
       />
-      {items.map((group) => (
-        <div key={group.cityKey} className="admin-media-city">
-          <h3>
-            {group.cityZh}（{group.cityKey}）
-            {group.needFill != null && group.needFill && !group.noData && (
-              <span className="admin-media-badge">不足10家，请补充</span>
-            )}
+
+      {displayItems.map((group) => {
+        const noCover = (group.restaurants || []).filter((r) => r.coverSource === 'none');
+        return (
+          <div key={group.cityKey} className="admin-media-city">
+            <h3>
+              {group.cityZh}（{group.cityKey}）
+              {group.noData ? (
+                <span className="admin-media-badge" style={{ background: '#fef3c7', color: '#92400e' }}>暂无数据</span>
+              ) : (
+                <span className="admin-media-count">
+                  {' '}共 {group.total} 家，前端展示 {group.displayCount} 家
+                  {noCover.length > 0 && <span style={{ color: '#dc2626' }}>，缺图 {noCover.length} 家</span>}
+                </span>
+              )}
+            </h3>
             {group.noData && (
-              <span className="admin-media-badge" style={{ background: '#fef3c7', color: '#92400e' }}>暂无数据</span>
+              <p className="admin-media-empty" style={{ fontSize: '0.9rem', color: '#666' }}>
+                该城市暂无预加载数据，请先访问首页该城市 Tab 触发推荐。
+              </p>
             )}
-            {group.withCoverCount != null && !group.noData && (
-              <span className="admin-media-count"> 共 {group.totalInCity || 0} 家，已有封面 {group.withCoverCount} 家</span>
-            )}
-          </h3>
-          {group.noData && group.message && (
-            <p className="admin-media-empty" style={{ marginBottom: 8, fontSize: '0.9rem', color: '#666' }}>{group.message}</p>
-          )}
-          <ul className="admin-media-list">
-            {(group.restaurants || []).map((r) => {
-              const key = `${group.cityKey}|${r.name}`;
-              const url = urlByKey[key] ?? '';
-              const saving = savingKey === key;
-              return (
-                <li key={key} className="admin-media-row">
-                  <div className="admin-media-thumb">
-                    <img src={r.image} alt="" />
-                  </div>
-                  <div className="admin-media-info">
-                    <strong>{r.name}</strong>
-                    {Array.isArray(r.reasons) && r.reasons.length > 0 && (
-                      <span className="admin-media-feature" style={{ color: '#a16207' }}>
-                        原因：{r.reasons.join('、')}
-                      </span>
+            <ul className="admin-media-list">
+              {(group.restaurants || []).map((r) => {
+                const key = `${group.cityKey}|${r.name}`;
+                const url = urlByKey[key] ?? '';
+                const saving = savingKey === key;
+                const badge = coverSourceLabel(r.coverSource);
+                const needFill = r.coverSource === 'none';
+                return (
+                  <li key={key} className="admin-media-row">
+                    <div className="admin-media-thumb">
+                      {r.image && r.coverSource !== 'none' ? (
+                        <img src={r.image} alt="" />
+                      ) : (
+                        <div style={{ width: 80, height: 60, background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, color: '#9ca3af', fontSize: 12 }}>
+                          缺图
+                        </div>
+                      )}
+                    </div>
+                    <div className="admin-media-info">
+                      <strong>{r.name}</strong>
+                      <span className={`admin-cover-badge ${badge.cls}`}>{badge.text}</span>
+                      {r.address && <span className="admin-media-address">{r.address}</span>}
+                      {r.feature && <span className="admin-media-feature">{r.feature}</span>}
+                    </div>
+                    {needFill && (
+                      <div className="admin-media-form">
+                        <input
+                          type="text"
+                          placeholder="https://... 或 /api/manual-covers/..."
+                          value={url}
+                          onChange={(e) => updateUrl(group.cityKey, r.name, e.target.value)}
+                          className="admin-media-input"
+                        />
+                        <button
+                          type="button" className="btn-primary"
+                          disabled={uploadingKey === key}
+                          onClick={() => handleUploadCover(group.cityKey, r.name)}
+                        >
+                          {uploadingKey === key ? '上传中…' : '上传图片'}
+                        </button>
+                        <button
+                          type="button" className="btn-primary"
+                          disabled={saving}
+                          onClick={() => handleSave(group.cityKey, r.name, url)}
+                        >
+                          {saving ? '保存中…' : '保存'}
+                        </button>
+                      </div>
                     )}
-                    {r.address && <span className="admin-media-address">{r.address}</span>}
-                    {r.feature && <span className="admin-media-feature">{r.feature}</span>}
-                    {r.image_url && (
-                      <span className="admin-media-feature" style={{ wordBreak: 'break-all' }}>
-                        当前：{r.image_url}
-                      </span>
-                    )}
-                  </div>
-                  <div className="admin-media-form">
-                    <input
-                      type="text"
-                      placeholder="https://... 或 /api/manual-covers/..."
-                      value={url}
-                      onChange={(e) => updateUrl(group.cityKey, r.name, e.target.value)}
-                      className="admin-media-input"
-                    />
-                    <button
-                      type="button"
-                      className="btn-primary"
-                      disabled={uploadingKey === key}
-                      onClick={() => handleUploadCover(group.cityKey, r.name)}
-                      title="上传图片到服务器，避免外链失效"
-                    >
-                      {uploadingKey === key ? '上传中…' : '上传图片'}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-primary"
-                      disabled={saving}
-                      onClick={() => handleSave(group.cityKey, r.name, url)}
-                    >
-                      {saving ? '保存中…' : '保存'}
-                    </button>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ))}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        );
+      })}
+
+      {/* 重复封面排查 - 默认折叠 */}
+      <div className="admin-media-city" style={{ marginTop: 24 }}>
+        <h3
+          style={{ cursor: 'pointer', userSelect: 'none' }}
+          onClick={() => { setDupOpen(!dupOpen); if (!dupOpen && dupGroups.length === 0) fetchDuplicates(); }}
+        >
+          {dupOpen ? '▼' : '▶'} 重复封面排查（串图排查）
+        </h3>
+        {dupOpen && (
+          <div>
+            <div className="admin-actions" style={{ marginBottom: 12 }}>
+              <button type="button" className="btn-outline" disabled={dupLoading} onClick={fetchDuplicates}>
+                {dupLoading ? '查询中…' : '刷新重复列表'}
+              </button>
+            </div>
+            {dupErr && <p className="form-error">{dupErr}</p>}
+            {dupGroups.length === 0 && !dupLoading && <p className="admin-media-empty">未发现重复封面。</p>}
+            {dupGroups.map((g) => (
+              <div key={g.manual_image_url} className="admin-panel" style={{ padding: 14, marginBottom: 12 }}>
+                <div className="admin-media-feature" style={{ marginBottom: 8, wordBreak: 'break-all' }}>
+                  <strong>URL：</strong>{g.manual_image_url}（重复 {g.cnt}）
+                </div>
+                <ul className="admin-media-list">
+                  {(g.items || []).map((it) => {
+                    const cityKey = it.cityKey || 'tokyo';
+                    const name = it.restaurant_name;
+                    const key = `${cityKey}|${name}`;
+                    const url = urlByKey[key] ?? '';
+                    const saving = savingKey === key;
+                    return (
+                      <li key={it.cache_key || key} className="admin-media-row">
+                        <div className="admin-media-thumb">
+                          <img src={g.manual_image_url} alt="" />
+                        </div>
+                        <div className="admin-media-info">
+                          <strong>{name}</strong>
+                          <span className="admin-media-feature">城市：{it.city_hint}{it.cityKey ? `（${it.cityKey}）` : ''}</span>
+                        </div>
+                        <div className="admin-media-form">
+                          <input
+                            type="text"
+                            placeholder="新封面 URL"
+                            value={url}
+                            onChange={(e) => updateUrl(cityKey, name, e.target.value)}
+                            className="admin-media-input"
+                          />
+                          <button type="button" className="btn-primary" disabled={uploadingKey === key}
+                            onClick={() => handleUploadCover(cityKey, name)}>
+                            {uploadingKey === key ? '上传中…' : '上传图片'}
+                          </button>
+                          <button type="button" className="btn-primary" disabled={saving}
+                            onClick={() => handleSave(cityKey, name, url)}>
+                            {saving ? '保存中…' : '保存'}
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

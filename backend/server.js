@@ -12,6 +12,7 @@ import translateRouter from './routes/translate.js';
 import { ensureSchema } from './db.js';
 import { optionalAuth } from './middleware/auth.js';
 import { startRetryCallScheduler } from './scheduler/retryCall.js';
+import { startCrawlerScheduler } from './scheduler/crawlerScheduler.js';
 import { runBuildPreloadAll } from './services/buildPreload.js';
 import fs from 'fs';
 import path from 'path';
@@ -23,6 +24,11 @@ if (process.env.DISABLE_RETRY_SCHEDULER !== '1') {
   startRetryCallScheduler();
 } else {
   console.warn('[server] retryCall scheduler disabled by DISABLE_RETRY_SCHEDULER=1');
+}
+if (process.env.DISABLE_CRAWLER_SCHEDULER !== '1') {
+  startCrawlerScheduler();
+} else {
+  console.warn('[server] crawler scheduler disabled by DISABLE_CRAWLER_SCHEDULER=1');
 }
 
 const app = express();

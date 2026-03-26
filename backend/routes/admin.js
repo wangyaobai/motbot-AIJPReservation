@@ -6,6 +6,7 @@ import { runRefineRecommendationImages } from '../services/refineRecommendationI
 import { getBestCachedMedia } from '../services/resolveRestaurantMedia.js';
 import {
   isNeedManualImageOnly,
+  excludeNeedManualImageOnly,
   moveOkinawaFromOtherToOkinawa,
   readFallbackRecommendations,
   readCrawledRecommendations,
@@ -13,8 +14,13 @@ import {
   writeBestRecommendations,
   backupToFallback,
   getCityZh,
+  applyBestMediaOverlay,
+  filterListByCityKey,
+  filterToListWithCover,
+  isFallbackImage as isFallbackImageStore,
 } from '../services/recommendationsStore.js';
 import { clearRecommendationsCache } from './recommendations.js';
+import { runCrawlerJob, crawlerState } from '../scheduler/crawlerScheduler.js';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -130,6 +136,72 @@ router.post('/change-password', adminAuthMiddleware, (req, res) => {
 });
 
 router.use(adminAuthMiddleware);
+
+// ========== 爬虫手动触发 + 状态查询 ==========
+router.post('/run-crawler', (req, res) => {
+  if (crawlerState.running) {
+    return res.json({ ok: false, message: '爬虫正在运行中，请稍后再试' });
+  }
+  res.json({ ok: true, message: '爬虫已开始在后台执行，预计 3~5 分钟完成。' });
+  setImmediate(() => {
+    runCrawlerJob().catch((e) => console.error('[admin] run-crawler error', e));
+  });
+});
+
+router.get('/crawler-status', (req, res) => {
+  res.json({
+    ok: true,
+    running: crawlerState.running,
+    lastRunAt: crawlerState.lastRunAt,
+    lastResult: crawlerState.lastResult,
+    lastError: crawlerState.lastError,
+    scheduledDay: crawlerState.scheduledDay,
+    scheduledHour: crawlerState.scheduledHour,
+  });
+});
+
+// ========== 前端实际展示的店铺列表 ==========
+router.get('/frontend-display', (req, res) => {
+  try {
+    const items = [];
+    for (const cityKey of JP_CITY_KEYS) {
+      const cityZh = cityZhFromKey(cityKey);
+      const best = readBestRecommendations({ country: 'jp', cityKey });
+      if (!best?.restaurants?.length) {
+        items.push({ cityKey, cityZh, restaurants: [], total: 0, displayCount: 0, noData: true });
+        continue;
+      }
+      let snapshot = applyBestMediaOverlay({ restaurants: best.restaurants, cityZh });
+      snapshot = filterListByCityKey(snapshot, cityKey);
+      snapshot = excludeNeedManualImageOnly(snapshot);
+      const withCover = filterToListWithCover(snapshot);
+
+      const restaurants = snapshot.map((r) => {
+        const hasCover = r?.image && !isFallbackImageStore(r.image);
+        const manualMedia = getBestCachedMedia({ cityHint: cityZh, name: r.name });
+        const hasManual = manualMedia?.manual_image_url && manualMedia.manual_enabled !== 0;
+        let coverSource = 'none';
+        if (hasManual) coverSource = 'manual';
+        else if (hasCover) coverSource = 'auto';
+        return {
+          id: r.id, name: r.name, image: r.image || '', address: r.address,
+          feature: r.feature, phone: r.phone, coverSource,
+        };
+      });
+
+      items.push({
+        cityKey, cityZh,
+        restaurants,
+        total: snapshot.length,
+        displayCount: withCover.length,
+        noData: false,
+      });
+    }
+    res.json({ ok: true, items });
+  } catch (e) {
+    res.status(500).json({ ok: false, message: e?.message || 'Server error' });
+  }
+});
 
 function maskPhone(phone) {
   if (!phone || phone.length < 7) return phone;
@@ -262,104 +334,43 @@ router.post('/move-okinawa-from-other', (req, res) => {
   }
 });
 
-/** 列出各城市可补充封面的餐厅；无预加载数据的城市也会列出并提示先访问首页或跑 warm */
+/** 列出各城市缺封面的餐厅，与前端首页实际展示逻辑完全一致 */
 router.get('/restaurants-without-cover', (req, res) => {
   try {
-    const rows = db.prepare(
-      'SELECT city_key, city_zh, restaurants_json FROM recommendations_best WHERE country = ?'
-    ).all('jp');
-    const byCity = {};
-    for (const row of rows) {
-      byCity[row.city_key] = row;
-    }
     const items = [];
     for (const cityKey of JP_CITY_KEYS) {
-      const row = byCity[cityKey];
       const cityZh = cityZhFromKey(cityKey);
-      if (!row || !row.restaurants_json) {
+      const bestData = readBestRecommendations({ country: 'jp', cityKey });
+      if (!bestData?.restaurants?.length) {
         items.push({
-          cityKey,
-          cityZh,
-          noData: true,
+          cityKey, cityZh, noData: true,
           message: '该城市暂无预加载数据。请先访问首页该城市 Tab 触发推荐，或运行 npm run warm 生成后再填写封面。',
-          totalInCity: 0,
-          withCoverCount: 0,
-          needFill: true,
-          restaurants: [],
+          totalInCity: 0, withCoverCount: 0, displayableCount: 0, needFill: true, restaurants: [],
         });
         continue;
       }
-      let list = [];
-      try {
-        list = JSON.parse(row.restaurants_json || '[]');
-      } catch {
-        items.push({ cityKey, cityZh, noData: true, message: '数据解析失败', totalInCity: 0, withCoverCount: 0, needFill: true, restaurants: [] });
-        continue;
-      }
-      if (!Array.isArray(list)) {
-        items.push({ cityKey, cityZh, noData: true, message: '无餐厅列表', totalInCity: 0, withCoverCount: 0, needFill: true, restaurants: [] });
-        continue;
-      }
-      // 后台尽量模拟“前端真实可展示数量”：
-      // - 有效图：存在 image_url，且不是兜底图，也不是高风险防盗链图源
-      // - 手动封面：附加统计，便于你了解已填多少
+      let snapshot = applyBestMediaOverlay({ restaurants: bestData.restaurants, cityZh });
+      snapshot = filterListByCityKey(snapshot, cityKey);
+      snapshot = excludeNeedManualImageOnly(snapshot);
+
       let manualCount = 0;
-      let displayableCount = 0;
-      for (const r of list) {
-        if (!r) continue;
-        const best = getBestCachedMedia({ cityHint: cityZh, name: r.name });
-        const manualUrl = best?.manual_image_url && best.manual_enabled !== 0 ? String(best.manual_image_url).trim() : '';
-        if (manualUrl) manualCount += 1;
-        const candidateUrl = manualUrl || String(r.image || '').trim();
-        if (candidateUrl && !isFallbackImage(candidateUrl) && !isLikelyFrontendBlockedImage(candidateUrl)) {
-          displayableCount += 1;
-        }
+      for (const r of snapshot) {
+        const m = getBestCachedMedia({ cityHint: cityZh, name: r.name });
+        if (m?.manual_image_url && m.manual_enabled !== 0) manualCount++;
       }
+      const displayable = filterToListWithCover(snapshot);
+      const displayableCount = displayable.length;
       const needFill = displayableCount < 10;
 
-      const candidates = list.filter((r) => {
-        if (!r) return false;
-        const best = getBestCachedMedia({ cityHint: cityZh, name: r.name });
-        const manualUrl = best?.manual_image_url && best.manual_enabled !== 0 ? String(best.manual_image_url).trim() : '';
-        const imageUrl = String(r.image || '').trim();
-        const finalUrl = manualUrl || imageUrl;
-
-        const hasDisplayable =
-          finalUrl && !isFallbackImage(finalUrl) && !isLikelyFrontendBlockedImage(finalUrl);
-
-        // 若需补齐到 10：列出当前“实际不可展示”的店，供你优先补齐
-        if (needFill) return !hasDisplayable;
-
-        // 若已不需要补齐：只列出明显需要处理的（兜底/需人工/高概率前端失败图源）
-        if (!hasDisplayable) return true;
-        if (isNeedManualImageOnly(r)) return true;
-        return false;
-      });
+      const candidates = snapshot.filter((r) => isFallbackImageStore(r?.image));
       items.push({
-        cityKey,
-        cityZh: row.city_zh || cityZh,
-        totalInCity: list.length,
-        withCoverCount: manualCount,
-        displayableCount,
-        needFill,
-        noData: false,
-        restaurants: candidates.map((r) => {
-          const reasons = [];
-          if (needFill) reasons.push('补齐到10（按手动封面计数）');
-          if (isFallbackImage(r?.image)) reasons.push('兜底图');
-          if (isNeedManualImageOnly(r)) reasons.push('需人工图');
-          if (isLikelyFrontendBlockedImage(r?.image)) reasons.push('图源可能加载失败');
-          if (reasons.length === 0) reasons.push('未手动封面');
-          return {
-            id: r.id,
-            name: r.name,
-            address: r.address,
-            feature: r.feature,
-            image: r.image || FALLBACK_IMAGE,
-            image_url: r.image || '',
-            reasons,
-          };
-        }),
+        cityKey, cityZh, totalInCity: snapshot.length,
+        withCoverCount: manualCount, displayableCount, needFill, noData: false,
+        restaurants: candidates.map((r) => ({
+          id: r.id, name: r.name, address: r.address, feature: r.feature,
+          image: r.image || FALLBACK_IMAGE, image_url: r.image || '',
+          reasons: ['缺封面图'],
+        })),
       });
     }
     res.json({ ok: true, items });
