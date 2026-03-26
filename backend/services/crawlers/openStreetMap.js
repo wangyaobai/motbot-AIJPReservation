@@ -16,6 +16,8 @@ export const CITY_BBOX = {
   kobe: [34.62, 135.05, 34.82, 135.35],
   okinawa: [26.15, 127.55, 26.45, 127.85],
   kyushu: [33.45, 130.15, 33.75, 130.55],
+  /** 仅用于按店名检索（searchRestaurantOSM）；不做全 bbox 拉池，避免全日本 Overpass 超时 */
+  other: [34.0, 130.0, 41.5, 142.0],
 };
 
 const USER_AGENT = 'RestaurantBookingBot/1.0 (OSM Overpass; contact: admin)';
@@ -159,7 +161,7 @@ out center tags 25;
   }
 }
 
-export async function runOverpass(query) {
+async function runOverpassOnce(query) {
   const url = overpassUrl();
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), 120000);
@@ -182,6 +184,29 @@ export async function runOverpass(query) {
   }
 }
 
+/**
+ * Overpass 请求，带重试与指数退避（网络抖动、429、公共实例繁忙时）。
+ * 环境变量：OVERPASS_MAX_RETRIES（默认 3）、OVERPASS_RETRY_BASE_MS（默认 2000）
+ */
+export async function runOverpass(query) {
+  const maxRetries = Math.min(8, Math.max(1, parseInt(process.env.OVERPASS_MAX_RETRIES, 10) || 3));
+  const baseDelay = Math.max(500, parseInt(process.env.OVERPASS_RETRY_BASE_MS, 10) || 2000);
+  let lastErr;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await runOverpassOnce(query);
+    } catch (e) {
+      lastErr = e;
+      if (attempt < maxRetries - 1) {
+        const wait = baseDelay * 2 ** attempt;
+        console.warn(`[osm] Overpass attempt ${attempt + 1}/${maxRetries} failed, retry in ${wait}ms:`, e?.message || e);
+        await new Promise((r) => setTimeout(r, wait));
+      }
+    }
+  }
+  throw lastErr;
+}
+
 function poolFromElements(elements, cityKey, maxCount) {
   const byNorm = new Map();
   for (const el of elements) {
@@ -200,6 +225,10 @@ function poolFromElements(elements, cityKey, maxCount) {
  * 拉取城市内 OSM 餐厅池（去重、按完整度排序），供米其林匹配 + 列表填充共用。
  */
 export async function fetchOsmRestaurantPool(cityKey, maxCount = 400) {
+  if (String(cityKey || '').toLowerCase() === 'other') {
+    console.log('[osm] city other: skip full bbox pool (use Michelin + name search only)');
+    return [];
+  }
   const bbox = CITY_BBOX[cityKey];
   if (!bbox) {
     console.warn('[osm] unknown cityKey', cityKey);

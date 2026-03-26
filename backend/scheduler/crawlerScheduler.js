@@ -7,19 +7,13 @@
  * 可通过 DISABLE_CRAWLER_SCHEDULER=1 关闭。
  * 可通过 CRAWLER_SCHEDULE_DAY=0-6 设置星期几（0=周日，默认0）。
  * 可通过 CRAWLER_SCHEDULE_HOUR=0-23 设置几点（默认3）。
- * 可选 OVERPASS_API_URL 指定 Overpass 实例。
- * 米其林条目若仍无电话：按店名再走一次 OSM（Overpass name~）检索补全。
+ * 可选 OVERPASS_API_URL、OVERPASS_MAX_RETRIES、CRAWLER_TARGET_PER_CITY（默认每城最多 15 条）。
  */
 import { ensureSchema } from '../db.js';
-import {
-  getCityZh,
-  filterListByCityKey,
-  writeCrawledRecommendations,
-} from '../services/recommendationsStore.js';
+import { writeCrawledRecommendations } from '../services/recommendationsStore.js';
+import { JP_CRAWLER_CITIES, buildCrawledListForCity, getCrawlerTargetPerCity } from '../services/crawlerMergeJob.js';
 
 const CHECK_INTERVAL_MS = 30 * 60 * 1000;
-const JP_CITIES = ['tokyo', 'osaka', 'kyoto', 'nagoya', 'kobe', 'hokkaido', 'okinawa', 'kyushu'];
-const TARGET = 15;
 
 export const crawlerState = {
   running: false,
@@ -32,10 +26,6 @@ export const crawlerState = {
 
 let lastScheduledDate = null;
 
-function normName(name) {
-  return String(name || '').trim().toLowerCase().replace(/\s+/g, ' ');
-}
-
 export async function runCrawlerJob() {
   if (crawlerState.running) {
     console.log('[crawler-scheduler] 爬虫正在运行中，跳过');
@@ -44,16 +34,14 @@ export async function runCrawlerJob() {
   crawlerState.running = true;
   crawlerState.lastError = null;
   const startedAt = new Date().toISOString();
-  console.log('[crawler-scheduler] 开始执行爬虫（Wikidata + OSM）…');
+  const targetCap = getCrawlerTargetPerCity();
+  console.log(`[crawler-scheduler] 开始执行爬虫（Wikidata + OSM，每城最多 ${targetCap} 条）…`);
 
   try {
     ensureSchema();
 
     const { queryMichelinRestaurantsJapan } = await import('../services/crawlers/wikidata-michelin.js');
-    const { fetchOsmRestaurantPool, findOsmMatchForMichelin } = await import('../services/crawlers/openStreetMap.js');
-    const { enrichRestaurantContact } = await import('../services/restaurantContactHybrid.js');
 
-    // 1. Wikidata 米其林餐厅名单
     let michelinByCity = {};
     try {
       const michelin = await queryMichelinRestaurantsJapan(150);
@@ -69,98 +57,18 @@ export async function runCrawlerJob() {
 
     const allResults = [];
 
-    for (const cityKey of JP_CITIES) {
+    for (const cityKey of JP_CRAWLER_CITIES) {
       try {
-        const cityZh = getCityZh(cityKey);
-        const nameSet = new Set();
-        const combined = [];
+        const { list, cityZh } = await buildCrawledListForCity({
+          cityKey,
+          michelinByCity,
+          logPrefix: '[crawler-scheduler]',
+        });
 
-        let osmPool = [];
-        try {
-          osmPool = await fetchOsmRestaurantPool(cityKey, 400);
-        } catch (e) {
-          console.warn(`[crawler-scheduler] OSM pool ${cityKey}:`, e?.message);
-        }
-
-        // 米其林餐厅排前面 (source: "michelin")，用 OSM 同店名匹配补电话/地址/营业时间/图
-        const michelinList = michelinByCity[cityKey] || [];
-        for (const m of michelinList) {
-          const n = normName(m.name);
-          if (!n || nameSet.has(n)) continue;
-          nameSet.add(n);
-
-          const match = findOsmMatchForMichelin(m.name, osmPool);
-          let image = '';
-          let phone = m.phone || '';
-          let address = m.address || '';
-          let opening_hours = '';
-          let google_place_id = '';
-          let google_rating = 0;
-          let osm_type = match?.osm_type || '';
-          let osm_id = match?.osm_id || '';
-          if (match) {
-            phone = match.phone || phone;
-            address = match.address || address;
-            opening_hours = match.opening_hours || '';
-            image = match.image || '';
-          }
-
-          if (!String(phone || '').trim()) {
-            const extra = await enrichRestaurantContact({ name: m.name, cityKey });
-            if (extra) {
-              phone = extra.phone || phone;
-              if (!address) address = extra.address || '';
-              if (!opening_hours) opening_hours = extra.opening_hours || '';
-              if (!image) image = extra.image || '';
-              if (extra.google_place_id) {
-                google_place_id = extra.google_place_id;
-                google_rating = extra.google_rating || 0;
-              }
-              if (extra.osm_id && !osm_id) {
-                osm_type = extra.osm_type || '';
-                osm_id = extra.osm_id || '';
-              }
-            }
-            await new Promise((r) => setTimeout(r, 400));
-          }
-
-          combined.push({
-            id: `m_${m.wikidata_id || normName(m.name).slice(0, 20)}`,
-            country: 'jp', cityKey,
-            name: m.name, city: m.city || cityZh,
-            phone, address, image,
-            feature: m.feature || '米其林指南',
-            call_lang: 'ja',
-            source: 'michelin',
-            wikidata_id: m.wikidata_id || '',
-            google_place_id,
-            google_rating,
-            opening_hours,
-            osm_type,
-            osm_id,
-          });
-        }
-
-        // OSM 餐厅按完整度排序填充剩余名额 (source: "osm")
-        for (const r of osmPool) {
-          if (combined.length >= TARGET) break;
-          const n = normName(r.name);
-          if (!n || nameSet.has(n)) continue;
-          nameSet.add(n);
-          combined.push({
-            ...r,
-            country: 'jp',
-            cityKey,
-            city: cityZh,
-          });
-        }
-
-        if (combined.length === 0) {
+        if (list.length === 0) {
           allResults.push({ cityKey, count: 0 });
           continue;
         }
-
-        let list = filterListByCityKey(combined, cityKey);
 
         writeCrawledRecommendations({ country: 'jp', cityKey, cityZh, restaurants: list });
         allResults.push({ cityKey, crawled: list.length });

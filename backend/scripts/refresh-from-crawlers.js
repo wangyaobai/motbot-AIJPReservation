@@ -11,15 +11,13 @@
  *   node scripts/refresh-from-crawlers.js --auto-merge
  *   node scripts/refresh-from-crawlers.js --auto-merge --replace
  *
- * 可选环境变量：OVERPASS_API_URL
+ * 可选环境变量：OVERPASS_API_URL、OVERPASS_MAX_RETRIES、CRAWLER_TARGET_PER_CITY
  */
 import 'dotenv/config';
 import { ensureSchema } from '../db.js';
 import {
   writeBestRecommendations,
   readBestRecommendations,
-  getCityZh,
-  filterListByCityKey,
   applyBestMediaOverlay,
   isFallbackImage,
   backupToFallback,
@@ -27,17 +25,18 @@ import {
 } from '../services/recommendationsStore.js';
 import { clearRecommendationsCache } from '../routes/recommendations.js';
 import { queryMichelinRestaurantsJapan } from '../services/crawlers/wikidata-michelin.js';
-import { fetchOsmRestaurantPool, findOsmMatchForMichelin } from '../services/crawlers/openStreetMap.js';
-import { enrichRestaurantContact } from '../services/restaurantContactHybrid.js';
-
-const JP_CITIES = ['tokyo', 'osaka', 'kyoto', 'nagoya', 'kobe', 'hokkaido', 'okinawa', 'kyushu'];
-const TARGET = 15;
+import {
+  JP_CRAWLER_CITIES,
+  buildCrawledListForCity,
+  getCrawlerTargetPerCity,
+} from '../services/crawlerMergeJob.js';
 
 function normName(name) {
   return String(name || '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
 function mergeWithExisting(existing, crawled, cityKey, cityZh) {
+  const cap = getCrawlerTargetPerCity();
   const byName = new Map();
   const existingList = Array.isArray(existing) ? existing : [];
   for (const r of existingList) {
@@ -54,7 +53,7 @@ function mergeWithExisting(existing, crawled, cityKey, cityZh) {
     byName.set(n, { ...r, _priority: 0 });
   }
   const sorted = [...byName.values()].sort((a, b) => (b._priority || 0) - (a._priority || 0));
-  return sorted.map(({ _priority, ...r }) => r).slice(0, TARGET);
+  return sorted.map(({ _priority, ...r }) => r).slice(0, cap);
 }
 
 async function main() {
@@ -63,10 +62,11 @@ async function main() {
   const replace = args.includes('--replace');
   const autoMerge = args.includes('--auto-merge');
   const cityArg = args.find((a) => a.startsWith('--city='));
-  const cities = cityArg ? [cityArg.split('=')[1]] : JP_CITIES;
+  const cities = cityArg ? [cityArg.split('=')[1]] : JP_CRAWLER_CITIES;
+  const cap = getCrawlerTargetPerCity();
 
   ensureSchema();
-  console.log('[refresh] 开始，城市:', cities.join(', '), dryRun ? '(dry-run)' : '', replace ? '(--replace)' : '', autoMerge ? '(--auto-merge)' : '', '(Wikidata + OSM)');
+  console.log('[refresh] 开始，城市:', cities.join(', '), dryRun ? '(dry-run)' : '', replace ? '(--replace)' : '', autoMerge ? '(--auto-merge)' : '', `(Wikidata + OSM, 每城≤${cap}条)`);
 
   if (!dryRun) {
     const backed = backupToFallback();
@@ -89,82 +89,22 @@ async function main() {
   const allResults = [];
 
   for (const cityKey of cities) {
-    if (!JP_CITIES.includes(cityKey)) { console.log('[refresh] 跳过', cityKey); continue; }
+    if (!JP_CRAWLER_CITIES.includes(cityKey)) {
+      console.log('[refresh] 跳过', cityKey);
+      continue;
+    }
 
     try {
-      const cityZh = getCityZh(cityKey);
-      const nameSet = new Set();
-      const combined = [];
+      const { list, cityZh } = await buildCrawledListForCity({
+        cityKey,
+        michelinByCity,
+        logPrefix: '[refresh]',
+      });
 
-      let osmPool = [];
-      try {
-        osmPool = await fetchOsmRestaurantPool(cityKey, 400);
-      } catch (e) {
-        console.warn(`[refresh] OSM ${cityKey}:`, e?.message);
+      if (list.length === 0) {
+        console.log('[refresh]', cityKey, '无新数据');
+        continue;
       }
-
-      const michelinList = michelinByCity[cityKey] || [];
-      for (const m of michelinList) {
-        const n = normName(m.name);
-        if (!n || nameSet.has(n)) continue;
-        nameSet.add(n);
-
-        const match = findOsmMatchForMichelin(m.name, osmPool);
-        let image = '';
-        let phone = m.phone || '';
-        let address = m.address || '';
-        let opening_hours = '';
-        let google_place_id = '';
-        let google_rating = 0;
-        let osm_type = match?.osm_type || '';
-        let osm_id = match?.osm_id || '';
-        if (match) {
-          phone = match.phone || phone;
-          address = match.address || address;
-          opening_hours = match.opening_hours || '';
-          image = match.image || '';
-        }
-
-        if (!String(phone || '').trim()) {
-          const extra = await enrichRestaurantContact({ name: m.name, cityKey });
-          if (extra) {
-            phone = extra.phone || phone;
-            if (!address) address = extra.address || '';
-            if (!opening_hours) opening_hours = extra.opening_hours || '';
-            if (!image) image = extra.image || '';
-            if (extra.google_place_id) {
-              google_place_id = extra.google_place_id;
-              google_rating = extra.google_rating || 0;
-            }
-            if (extra.osm_id && !osm_id) {
-              osm_type = extra.osm_type || '';
-              osm_id = extra.osm_id || '';
-            }
-          }
-          await new Promise((r) => setTimeout(r, 400));
-        }
-
-        combined.push({
-          id: `m_${m.wikidata_id || n.slice(0, 20)}`,
-          country: 'jp', cityKey, name: m.name, city: m.city || cityZh,
-          phone, address, image, feature: m.feature || '米其林指南',
-          call_lang: 'ja', source: 'michelin',
-          wikidata_id: m.wikidata_id || '', google_place_id, google_rating, opening_hours,
-          osm_type, osm_id,
-        });
-      }
-
-      for (const r of osmPool) {
-        if (combined.length >= TARGET) break;
-        const n = normName(r.name);
-        if (!n || nameSet.has(n)) continue;
-        nameSet.add(n);
-        combined.push({ ...r, country: 'jp', cityKey, city: cityZh });
-      }
-
-      if (combined.length === 0) { console.log('[refresh]', cityKey, '无新数据'); continue; }
-
-      let list = filterListByCityKey(combined, cityKey);
 
       if (!dryRun && list.length > 0) {
         writeCrawledRecommendations({ country: 'jp', cityKey, cityZh, restaurants: list });
@@ -174,7 +114,7 @@ async function main() {
       let final;
       if (autoMerge) {
         if (replace) {
-          final = list.slice(0, TARGET);
+          final = list.slice(0, cap);
         } else {
           const best = readBestRecommendations({ country: 'jp', cityKey });
           const existing = best?.restaurants ? applyBestMediaOverlay({ restaurants: best.restaurants, cityZh }) : [];
@@ -203,4 +143,7 @@ async function main() {
   console.log('[refresh] 完成', allResults);
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});
