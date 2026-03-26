@@ -73,6 +73,6 @@ node scripts/refresh-from-crawlers.js --auto-merge --replace
 
 | 来源 | 说明 |
 |------|------|
-| **Wikidata** | 日本米其林（P166） |
+| **Wikidata** | 日本米其林（P166）。若出现 `403 Too Many Reqs`，属 WDQS 限流：代码会自动退避重试；请在 `.env` 设置 `WIKIDATA_USER_AGENT_CONTACT`（可联系 URL/邮箱），并避免短时间内重复手动跑同一查询。 |
 | **Tabelog**（可选） | 按评分列表抓取少量高评价店，需 `CRAWLER_INCLUDE_TABELOG=1` |
 | **Overpass** | 城市 bbox 内餐厅 POI；`other` 仅按店名子串检索补全 |
