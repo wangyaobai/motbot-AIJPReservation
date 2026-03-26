@@ -54,9 +54,15 @@ export function normalizeCrawledList(list) {
  * 用 DeepSeek 为每条生成简短推荐理由与一句评价摘要（基于已有结构化字段，不编造电话地址）。
  */
 export async function refineCrawledListWithDeepSeek(restaurants, cityZh) {
-  if (process.env.CRAWLER_DEEPSEEK_REFINE !== '1') return restaurants;
+  if (process.env.CRAWLER_DEEPSEEK_REFINE !== '1') {
+    return restaurants;
+  }
   const apiKey = process.env.DEEPSEEK_API_KEY;
-  if (!apiKey || !Array.isArray(restaurants) || restaurants.length === 0) return restaurants;
+  if (!apiKey) {
+    console.warn('[crawlDataNormalizer] DeepSeek 兜底已开启(CRAWLER_DEEPSEEK_REFINE=1)但未配置 DEEPSEEK_API_KEY，跳过');
+    return restaurants;
+  }
+  if (!Array.isArray(restaurants) || restaurants.length === 0) return restaurants;
 
   const slice = restaurants.slice(0, 20);
   const compact = slice.map((r, i) => ({
@@ -86,14 +92,24 @@ export async function refineCrawledListWithDeepSeek(restaurants, cityZh) {
     });
     clearTimeout(t);
     if (!res.ok) {
-      console.warn('[crawlDataNormalizer] DeepSeek refine HTTP', res.status);
+      const errBody = await res.text().catch(() => '');
+      console.warn('[crawlDataNormalizer] DeepSeek refine HTTP', res.status, errBody.slice(0, 200));
       return restaurants;
     }
     const data = await res.json();
     const text = data?.choices?.[0]?.message?.content?.trim() || '';
     const jsonMatch = text.match(/\[[\s\S]*\]/);
-    if (!jsonMatch) return restaurants;
-    const parsed = JSON.parse(jsonMatch[0]);
+    if (!jsonMatch) {
+      console.warn('[crawlDataNormalizer] DeepSeek 返回中未解析到 JSON 数组，跳过兜底。原文片段:', text.slice(0, 160));
+      return restaurants;
+    }
+    let parsed;
+    try {
+      parsed = JSON.parse(jsonMatch[0]);
+    } catch (pe) {
+      console.warn('[crawlDataNormalizer] DeepSeek JSON 解析失败', pe?.message);
+      return restaurants;
+    }
     if (!Array.isArray(parsed)) return restaurants;
 
     const out = restaurants.map((r, idx) => {
@@ -107,6 +123,14 @@ export async function refineCrawledListWithDeepSeek(restaurants, cityZh) {
         review_snippet: String(patch.review_snippet || r.review_snippet || '').trim(),
       });
     });
+    let withSnippet = 0;
+    for (let i = 0; i < Math.min(slice.length, parsed.length); i++) {
+      const p = parsed[i];
+      if (p && String(p.review_snippet || '').trim()) withSnippet += 1;
+    }
+    console.log(
+      `[crawlDataNormalizer] DeepSeek 兜底 ${cityZh}: 处理前 ${slice.length} 条，写入评价摘要约 ${withSnippet} 条（全表 ${restaurants.length} 条）`,
+    );
     return out;
   } catch (e) {
     clearTimeout(t);

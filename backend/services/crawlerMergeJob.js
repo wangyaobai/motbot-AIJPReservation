@@ -29,7 +29,10 @@ function normName(name) {
 async function appendTabelogSlots({ cityKey, combined, nameSet, TARGET, logPrefix }) {
   if (process.env.CRAWLER_INCLUDE_TABELOG !== '1') return;
   const slots = Math.max(0, TARGET - combined.length);
-  if (slots <= 0) return;
+  if (slots <= 0) {
+    console.warn(`${logPrefix} Tabelog 跳过：列表已满 ${combined.length}/${TARGET}（无空余槽位）`);
+    return;
+  }
 
   const maxT = Math.min(5, slots);
   try {
@@ -39,6 +42,7 @@ async function appendTabelogSlots({ cityKey, combined, nameSet, TARGET, logPrefi
         ? await crawlTabelogOther(maxT)
         : await crawlTabelogCity(cityKey, maxT);
 
+    const lenBeforeTabelog = combined.length;
     for (const row of rows || []) {
       if (combined.length >= TARGET) break;
       const n = normName(row.name);
@@ -70,7 +74,10 @@ async function appendTabelogSlots({ cityKey, combined, nameSet, TARGET, logPrefi
         review_snippet: '',
       });
     }
-    console.log(`${logPrefix} Tabelog +${Math.min(rows?.length || 0, maxT)} 候选（实际入列以去重后为准）`);
+    const realAdded = combined.length - lenBeforeTabelog;
+    console.log(
+      `${logPrefix} Tabelog：抓取 ${rows?.length || 0} 条候选，入列 ${realAdded} 条（上限 ${maxT}，槽位 ${slots}）；0 条时多为详情页未解析到电话/地址、或与日本 IP/反爬有关`,
+    );
   } catch (e) {
     console.warn(`${logPrefix} Tabelog 补充失败`, e?.message);
   }
@@ -91,6 +98,11 @@ export async function buildCrawledListForCity({
   const nameSet = new Set();
   const combined = [];
 
+  /** 开启 Tabelog 时预留最多 5 条槽位，避免米其林先占满 TARGET 导致永远跑不到 Tabelog */
+  const tabelogReserve =
+    process.env.CRAWLER_INCLUDE_TABELOG === '1' ? Math.min(5, Math.max(1, TARGET - 1)) : 0;
+  const michelinCap = Math.max(0, TARGET - tabelogReserve);
+
   let osmPool = [];
   try {
     osmPool = await fetchOsmRestaurantPool(cityKey, 400);
@@ -100,7 +112,7 @@ export async function buildCrawledListForCity({
 
   const michelinList = michelinByCity[cityKey] || [];
   for (const m of michelinList) {
-    if (combined.length >= TARGET) break;
+    if (combined.length >= michelinCap) break;
     const n = normName(m.name);
     if (!n || nameSet.has(n)) continue;
     nameSet.add(n);
