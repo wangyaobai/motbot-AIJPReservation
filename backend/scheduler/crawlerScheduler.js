@@ -7,7 +7,8 @@
  * 可通过 DISABLE_CRAWLER_SCHEDULER=1 关闭。
  * 可通过 CRAWLER_SCHEDULE_DAY=0-6 设置星期几（0=周日，默认0）。
  * 可通过 CRAWLER_SCHEDULE_HOUR=0-23 设置几点（默认3）。
- * 可选：OVERPASS_API_URL、OVERPASS_MAX_RETRIES、CRAWLER_TARGET_PER_CITY、CRAWLER_INCLUDE_TABELOG、CRAWLER_DEEPSEEK_REFINE + DEEPSEEK_API_KEY。
+ * 可选：OVERPASS_*、CRAWLER_TARGET_PER_CITY、CRAWLER_INCLUDE_TABELOG、CRAWLER_DEEPSEEK_REFINE、
+ * CRAWLER_DELAY_BETWEEN_CITIES_MS（城与城之间休眠，减轻 Overpass 429/504）、CRAWLER_PAUSE_AFTER_WIKIDATA_MS。
  */
 import { ensureSchema } from '../db.js';
 import { writeCrawledRecommendations } from '../services/recommendationsStore.js';
@@ -25,6 +26,19 @@ export const crawlerState = {
 };
 
 let lastScheduledDate = null;
+
+/** 每处理完一城后休眠，避免连续 9 次 Overpass 打满公共实例触发 429 */
+function getDelayBetweenCitiesMs() {
+  const n = parseInt(process.env.CRAWLER_DELAY_BETWEEN_CITIES_MS, 10);
+  if (Number.isFinite(n) && n >= 0 && n <= 120000) return n;
+  return 12000;
+}
+
+function getPauseAfterWikidataMs() {
+  const n = parseInt(process.env.CRAWLER_PAUSE_AFTER_WIKIDATA_MS, 10);
+  if (Number.isFinite(n) && n >= 0 && n <= 60000) return n;
+  return 5000;
+}
 
 export async function runCrawlerJob() {
   if (crawlerState.running) {
@@ -55,9 +69,17 @@ export async function runCrawlerJob() {
       console.warn('[crawler-scheduler] Wikidata 失败', e?.message);
     }
 
-    const allResults = [];
+    const pauseW = getPauseAfterWikidataMs();
+    if (pauseW > 0) {
+      console.log(`[crawler-scheduler] Wikidata 结束后休眠 ${pauseW}ms 再请求 Overpass，降低与 WDQS 并发`);
+      await new Promise((r) => setTimeout(r, pauseW));
+    }
 
-    for (const cityKey of JP_CRAWLER_CITIES) {
+    const allResults = [];
+    const betweenMs = getDelayBetweenCitiesMs();
+
+    for (let i = 0; i < JP_CRAWLER_CITIES.length; i++) {
+      const cityKey = JP_CRAWLER_CITIES[i];
       try {
         const { list, cityZh } = await buildCrawledListForCity({
           cityKey,
@@ -67,17 +89,19 @@ export async function runCrawlerJob() {
 
         if (list.length === 0) {
           allResults.push({ cityKey, count: 0 });
-          continue;
+        } else {
+          writeCrawledRecommendations({ country: 'jp', cityKey, cityZh, restaurants: list });
+          allResults.push({ cityKey, crawled: list.length });
+          console.log('[crawler-scheduler]', cityKey, '爬取', list.length, '家 -> 已入库 crawled');
         }
-
-        writeCrawledRecommendations({ country: 'jp', cityKey, cityZh, restaurants: list });
-        allResults.push({ cityKey, crawled: list.length });
-        console.log('[crawler-scheduler]', cityKey, '爬取', list.length, '家 -> 已入库 crawled');
-
-        await new Promise((r) => setTimeout(r, 1000));
       } catch (e) {
         console.error('[crawler-scheduler]', cityKey, 'error:', e?.message);
         allResults.push({ cityKey, count: 0, error: e?.message });
+      }
+
+      if (i < JP_CRAWLER_CITIES.length - 1) {
+        const jitter = Math.floor(Math.random() * 2000);
+        await new Promise((r) => setTimeout(r, betweenMs + jitter));
       }
     }
 

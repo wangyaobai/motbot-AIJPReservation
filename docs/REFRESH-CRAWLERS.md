@@ -62,10 +62,13 @@ node scripts/refresh-from-crawlers.js --auto-merge --replace
 | `CRAWLER_TARGET_PER_CITY` | 每城写入 crawled 的最大条数，默认 `15`，范围建议 `5`～`50`。 |
 | `CRAWLER_INCLUDE_TABELOG` | 设为 `1` 时启用 Tabelog 补充（默认关闭）。 |
 | `CRAWLER_DEEPSEEK_REFINE` | 设为 `1` 且配置 `DEEPSEEK_API_KEY` 时，对爬取列表做文案兜底（每城最多处理前 20 条）。 |
+| `CRAWLER_DELAY_BETWEEN_CITIES_MS` | 每城爬取结束后到下一城前的休眠（默认 `12000`），减轻公共 Overpass 连续请求导致的 429/504。 |
+| `CRAWLER_PAUSE_AFTER_WIKIDATA_MS` | Wikidata 米其林查询结束后、开始 Overpass 前的休眠（默认 `5000`）。 |
 
 ## 频率与合规
 
-- OSM 数据遵循 [ODbL](https://www.openstreetmap.org/copyright)；勿过高频率轰炸公共 Overpass，生产请使用自有实例或合理拉长调度间隔。
+- OSM 数据遵循 [ODbL](https://www.openstreetmap.org/copyright)；勿过高频率轰炸公共 Overpass。若日志大量 `Overpass HTTP 429/504`，请增大 `CRAWLER_DELAY_BETWEEN_CITIES_MS`（如 `20000`）或改用自建/镜像 Overpass（`OVERPASS_API_URL`）。公共实例列表见 [Overpass API](https://wiki.openstreetmap.org/wiki/Overpass_API#Public_Overpass_API_instances)。
+- Wikidata 若连续 `403 Too Many Reqs`，多为出口 IP 被限流：配置 `WIKIDATA_USER_AGENT_CONTACT`、拉长调度间隔、冷却数小时后再跑；长期可考虑换出口 IP 或使用 [数据转储](https://www.wikidata.org/wiki/Wikidata:Database_download) 等合规离线方案。
 - Tabelog 等第三方站点请自行评估 robots/服务条款；建议低频、小批量，生产可关闭 `CRAWLER_INCLUDE_TABELOG`。
 - 调度器默认每周触发一次（见 `CRAWLER_SCHEDULE_DAY` / `CRAWLER_SCHEDULE_HOUR`）。
 
