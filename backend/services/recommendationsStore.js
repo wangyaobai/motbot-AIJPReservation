@@ -307,6 +307,52 @@ export function readFallbackRecommendations({ country, cityKey } = {}) {
   }
 }
 
+function normalizeNameForMatch(name) {
+  return String(name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+export function deleteFromBest({ country, cityKey, name } = {}) {
+  const db = getDb();
+  const key = recoCacheKey(country || 'jp', cityKey);
+  const row = db.prepare('SELECT restaurants_json, city_zh FROM recommendations_best WHERE cache_key = ?').get(key);
+  if (!row?.restaurants_json) return false;
+  const arr = JSON.parse(row.restaurants_json);
+  const target = normalizeNameForMatch(name);
+  const filtered = arr.filter((r) => normalizeNameForMatch(r.name) !== target);
+  if (filtered.length === arr.length) return false;
+  db.prepare('UPDATE recommendations_best SET restaurants_json = ?, updated_at = datetime(\'now\') WHERE cache_key = ?')
+    .run(JSON.stringify(filtered), key);
+  return true;
+}
+
+export function deleteFromFallback({ country, cityKey, name } = {}) {
+  const db = getDb();
+  const key = recoCacheKey(country || 'jp', cityKey);
+  const row = db.prepare('SELECT restaurants_json, city_zh FROM recommendations_fallback WHERE cache_key = ?').get(key);
+  if (!row?.restaurants_json) return false;
+  const arr = JSON.parse(row.restaurants_json);
+  const target = normalizeNameForMatch(name);
+  const filtered = arr.filter((r) => normalizeNameForMatch(r.name) !== target);
+  if (filtered.length === arr.length) return false;
+  db.prepare('UPDATE recommendations_fallback SET restaurants_json = ?, updated_at = datetime(\'now\') WHERE cache_key = ?')
+    .run(JSON.stringify(filtered), key);
+  return true;
+}
+
+export function deleteFromCrawled({ country, cityKey, name } = {}) {
+  const db = getDb();
+  const key = recoCacheKey(country || 'jp', cityKey);
+  const row = db.prepare('SELECT restaurants_json FROM recommendations_crawled WHERE cache_key = ?').get(key);
+  if (!row?.restaurants_json) return false;
+  const arr = JSON.parse(row.restaurants_json);
+  const target = normalizeNameForMatch(name);
+  const filtered = arr.filter((r) => normalizeNameForMatch(r.name) !== target);
+  if (filtered.length === arr.length) return false;
+  db.prepare('UPDATE recommendations_crawled SET restaurants_json = ?, updated_at = datetime(\'now\') WHERE cache_key = ?')
+    .run(JSON.stringify(filtered), key);
+  return true;
+}
+
 /** 读取爬取数据 */
 export function readCrawledRecommendations({ country, cityKey } = {}) {
   try {

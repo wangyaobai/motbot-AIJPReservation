@@ -1,5 +1,6 @@
 /**
  * 每周自动执行爬虫调度器。
+ * 数据源：Wikidata 米其林 + Google Places API（替代 Tabelog）。
  * 爬取数据只写入 recommendations_crawled，不自动合并到 recommendations_best。
  * 需管理员在后台审核后手动确认才进入前端展示。
  *
@@ -17,7 +18,7 @@ import {
 } from '../services/recommendationsStore.js';
 
 const CHECK_INTERVAL_MS = 30 * 60 * 1000;
-const JP_CITIES = ['tokyo', 'osaka', 'kyoto', 'nagoya', 'kobe', 'hokkaido', 'okinawa', 'kyushu', 'other'];
+const JP_CITIES = ['tokyo', 'osaka', 'kyoto', 'nagoya', 'kobe', 'hokkaido', 'okinawa', 'kyushu'];
 const TARGET = 15;
 
 export const crawlerState = {
@@ -35,10 +36,6 @@ function normName(name) {
   return String(name || '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
-function normalizeKey(s) {
-  return String(s || '').trim().replace(/\s*[\(（][^\)）]*[\)）]\s*/g, ' ').replace(/\s{2,}/g, ' ').trim();
-}
-
 export async function runCrawlerJob() {
   if (crawlerState.running) {
     console.log('[crawler-scheduler] 爬虫正在运行中，跳过');
@@ -47,15 +44,26 @@ export async function runCrawlerJob() {
   crawlerState.running = true;
   crawlerState.lastError = null;
   const startedAt = new Date().toISOString();
-  console.log('[crawler-scheduler] 开始执行爬虫（仅写入 crawled，需后台确认后进入前端）…');
+  console.log('[crawler-scheduler] 开始执行爬虫（Wikidata 米其林 + Google Places）…');
+
+  const useGoogle = !!process.env.GOOGLE_PLACES_API_KEY;
 
   try {
     ensureSchema();
 
-    const { crawlTabelogCity, crawlTabelogOther } = await import('../services/crawlers/tabelog.js');
     const { queryMichelinRestaurantsJapan } = await import('../services/crawlers/wikidata-michelin.js');
-    const { resolveRestaurantMediaBatch } = await import('../services/resolveRestaurantMedia.js');
 
+    let crawlCityViaGoogle = null;
+    let getPlaceDetails = null;
+    let downloadPhoto = null;
+    if (useGoogle) {
+      const gp = await import('../services/crawlers/googlePlaces.js');
+      crawlCityViaGoogle = gp.crawlCityViaGoogle;
+      getPlaceDetails = gp.getPlaceDetails;
+      downloadPhoto = gp.downloadPhoto;
+    }
+
+    // 1. Wikidata 米其林餐厅名单
     let michelinByCity = {};
     try {
       const michelin = await queryMichelinRestaurantsJapan(150);
@@ -74,55 +82,99 @@ export async function runCrawlerJob() {
     for (const cityKey of JP_CITIES) {
       try {
         const cityZh = getCityZh(cityKey);
-        let crawled = [];
-        if (cityKey === 'other') {
-          crawled = await crawlTabelogOther(TARGET);
-        } else {
-          crawled = await crawlTabelogCity(cityKey, TARGET);
-        }
+        const nameSet = new Set();
+        const combined = [];
 
+        // 米其林餐厅排前面 (source: "michelin")
         const michelinList = michelinByCity[cityKey] || [];
-        const nameSet = new Set(crawled.map((r) => normName(r.name)));
         for (const m of michelinList) {
           const n = normName(m.name);
           if (!n || nameSet.has(n)) continue;
           nameSet.add(n);
-          crawled.push({
-            name: m.name, phone: m.phone || '', address: m.address || '',
-            city: m.city || cityZh, cityKey, wikidata_id: m.wikidata_id || '',
-            feature: m.feature || '米其林指南', call_lang: 'ja',
+
+          let image = '';
+          let phone = m.phone || '';
+          let address = m.address || '';
+          let opening_hours = '';
+          let google_place_id = '';
+          let google_rating = 0;
+
+          // 用 Google Places 补充米其林餐厅的详细信息和照片
+          if (useGoogle) {
+            try {
+              const { searchRestaurants } = await import('../services/crawlers/googlePlaces.js');
+              const hits = await searchRestaurants(cityKey, `${m.name} restaurant ${cityZh}`, 1);
+              if (hits.length > 0) {
+                const hit = hits[0];
+                google_place_id = hit.place_id;
+                const details = await getPlaceDetails(hit.place_id);
+                if (details) {
+                  phone = details.phone || phone;
+                  address = details.address || address;
+                  opening_hours = details.opening_hours || '';
+                  google_rating = details.rating || 0;
+                  const photoRef = details.photo_reference || hit.photo_reference;
+                  if (photoRef) {
+                    image = await downloadPhoto(photoRef, `michelin_${cityKey}_${hit.place_id}`);
+                  }
+                }
+              }
+            } catch (e) {
+              console.warn(`[crawler-scheduler] Google lookup for michelin ${m.name}:`, e?.message);
+            }
+          }
+
+          combined.push({
+            id: `m_${m.wikidata_id || normName(m.name).slice(0, 20)}`,
+            country: 'jp', cityKey,
+            name: m.name, city: m.city || cityZh,
+            phone, address, image,
+            feature: m.feature || '米其林指南',
+            call_lang: 'ja',
+            source: 'michelin',
+            wikidata_id: m.wikidata_id || '',
+            google_place_id,
+            google_rating,
+            opening_hours,
           });
         }
 
-        if (crawled.length === 0) { allResults.push({ cityKey, count: 0 }); continue; }
-
-        let list = crawled.map((r) => ({
-          id: `${cityKey}-${normName(r.name).slice(0, 20)}`,
-          country: 'jp', cityKey, name: r.name, city: r.city || cityZh,
-          phone: r.phone || '', address: r.address || '',
-          feature: r.feature || '高评价餐厅', call_lang: r.call_lang || 'ja',
-          image: '', tabelog_url: r.tabelog_url || '', wikidata_id: r.wikidata_id || '',
-        }));
-
-        list = filterListByCityKey(list, cityKey);
-        if (cityKey === 'other') list = filterOtherCityList(list);
-
-        try {
-          const mediaMap = await resolveRestaurantMediaBatch({ cityZh, restaurants: list, budgetMs: 12000 });
-          for (const r of list) {
-            const m = mediaMap.get(normalizeKey(r.name));
-            if (m?.image_url && !isFallbackImage(m.image_url)) r.image = m.image_url;
-            if (m?.tabelog_url && !r.tabelog_url) r.tabelog_url = m.tabelog_url;
+        // Google Places 高评分餐厅填充 (source: "google")
+        if (useGoogle) {
+          const remaining = Math.max(0, TARGET - combined.length);
+          if (remaining > 0) {
+            try {
+              const googleList = await crawlCityViaGoogle(cityKey, remaining + 5);
+              for (const g of googleList) {
+                if (combined.length >= TARGET) break;
+                const n = normName(g.name);
+                if (nameSet.has(n)) continue;
+                nameSet.add(n);
+                combined.push({
+                  ...g,
+                  country: 'jp',
+                  cityKey,
+                  city: cityZh,
+                });
+              }
+            } catch (e) {
+              console.warn(`[crawler-scheduler] Google Places for ${cityKey}:`, e?.message);
+            }
           }
-        } catch (e) {
-          console.warn('[crawler-scheduler] 补图失败', cityKey, e?.message);
         }
+
+        if (combined.length === 0) {
+          allResults.push({ cityKey, count: 0 });
+          continue;
+        }
+
+        let list = filterListByCityKey(combined, cityKey);
 
         writeCrawledRecommendations({ country: 'jp', cityKey, cityZh, restaurants: list });
         allResults.push({ cityKey, crawled: list.length });
         console.log('[crawler-scheduler]', cityKey, '爬取', list.length, '家 -> 已入库 crawled');
 
-        await new Promise((r) => setTimeout(r, 3000));
+        await new Promise((r) => setTimeout(r, 1000));
       } catch (e) {
         console.error('[crawler-scheduler]', cityKey, 'error:', e?.message);
         allResults.push({ cityKey, count: 0, error: e?.message });

@@ -19,6 +19,9 @@ import {
   filterToListWithCover,
   isFallbackImage as isFallbackImageStore,
   isVisibleCover,
+  deleteFromBest,
+  deleteFromFallback,
+  deleteFromCrawled,
 } from '../services/recommendationsStore.js';
 import { clearRecommendationsCache } from './recommendations.js';
 import { runCrawlerJob, crawlerState } from '../scheduler/crawlerScheduler.js';
@@ -731,6 +734,42 @@ router.post('/shops/crawled/confirm', (req, res) => {
     writeBestRecommendations({ country: 'jp', cityKey, cityZh, restaurants: final });
     clearRecommendationsCache();
     res.json({ ok: true, count: final.length, message: `已备份旧数据到兜底，${final.length} 家已进入前端展示` });
+  } catch (e) {
+    res.status(500).json({ ok: false, message: e?.message || 'Server error' });
+  }
+});
+
+// ========== 删除餐厅 ==========
+
+router.post('/shops/best/delete', (req, res) => {
+  try {
+    const { cityKey, name } = req.body || {};
+    if (!cityKey || !name) return res.json({ ok: false, message: '缺少 cityKey 或 name' });
+    const ok = deleteFromBest({ country: 'jp', cityKey, name });
+    if (ok) clearRecommendationsCache();
+    res.json({ ok, message: ok ? '已从前端展示中删除' : '未找到该餐厅' });
+  } catch (e) {
+    res.status(500).json({ ok: false, message: e?.message || 'Server error' });
+  }
+});
+
+router.post('/shops/fallback/delete', (req, res) => {
+  try {
+    const { cityKey, name } = req.body || {};
+    if (!cityKey || !name) return res.json({ ok: false, message: '缺少 cityKey 或 name' });
+    const ok = deleteFromFallback({ country: 'jp', cityKey, name });
+    res.json({ ok, message: ok ? '已从兜底数据中删除' : '未找到该餐厅' });
+  } catch (e) {
+    res.status(500).json({ ok: false, message: e?.message || 'Server error' });
+  }
+});
+
+router.post('/shops/crawled/delete', (req, res) => {
+  try {
+    const { cityKey, name } = req.body || {};
+    if (!cityKey || !name) return res.json({ ok: false, message: '缺少 cityKey 或 name' });
+    const ok = deleteFromCrawled({ country: 'jp', cityKey, name });
+    res.json({ ok, message: ok ? '已从爬取数据中删除' : '未找到该餐厅' });
   } catch (e) {
     res.status(500).json({ ok: false, message: e?.message || 'Server error' });
   }

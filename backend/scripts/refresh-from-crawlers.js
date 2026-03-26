@@ -1,5 +1,5 @@
 /**
- * 从 Tabelog + Wikidata 米其林爬取餐厅。
+ * 从 Wikidata 米其林 + Google Places 爬取餐厅。
  * - 默认：备份 recommendations_best 到兜底表，爬取写入 recommendations_crawled，需后台确认后进入前端
  * - --auto-merge：自动合并到 recommendations_best（适合 crontab）
  * - --replace：与 --auto-merge 联用时完全覆盖，不保留旧数据
@@ -8,7 +8,7 @@
  *   cd backend && node scripts/refresh-from-crawlers.js
  *   node scripts/refresh-from-crawlers.js --city=tokyo
  *   node scripts/refresh-from-crawlers.js --dry-run
- *   node scripts/refresh-from-crawlers.js --auto-merge   # 自动合并到前端
+ *   node scripts/refresh-from-crawlers.js --auto-merge
  *   node scripts/refresh-from-crawlers.js --auto-merge --replace
  */
 import 'dotenv/config';
@@ -18,29 +18,21 @@ import {
   readBestRecommendations,
   getCityZh,
   filterListByCityKey,
-  filterOtherCityList,
   applyBestMediaOverlay,
   isFallbackImage,
   backupToFallback,
   writeCrawledRecommendations,
 } from '../services/recommendationsStore.js';
 import { clearRecommendationsCache } from '../routes/recommendations.js';
-import { crawlTabelogCity, crawlTabelogOther } from '../services/crawlers/tabelog.js';
 import { queryMichelinRestaurantsJapan } from '../services/crawlers/wikidata-michelin.js';
-import { resolveRestaurantMediaBatch } from '../services/resolveRestaurantMedia.js';
 
-const JP_CITIES = ['tokyo', 'osaka', 'kyoto', 'nagoya', 'kobe', 'hokkaido', 'okinawa', 'kyushu', 'other'];
-const TARGET = 10;
+const JP_CITIES = ['tokyo', 'osaka', 'kyoto', 'nagoya', 'kobe', 'hokkaido', 'okinawa', 'kyushu'];
+const TARGET = 15;
 
 function normName(name) {
   return String(name || '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
-function normalizeKey(s) {
-  return String(s || '').trim().replace(/\s*[\(（][^\)）]*[\)）]\s*/g, ' ').replace(/\s{2,}/g, ' ').trim();
-}
-
-/** 合并：已有（含手动/好图）优先，再补新爬取，去重按名 */
 function mergeWithExisting(existing, crawled, cityKey, cityZh) {
   const byName = new Map();
   const existingList = Array.isArray(existing) ? existing : [];
@@ -69,16 +61,17 @@ async function main() {
   const cityArg = args.find((a) => a.startsWith('--city='));
   const cities = cityArg ? [cityArg.split('=')[1]] : JP_CITIES;
 
-  ensureSchema();
-  console.log('[refresh] 开始，城市:', cities.join(', '), dryRun ? '(dry-run)' : '', replace ? '(--replace 完全覆盖)' : '', autoMerge ? '(--auto-merge 自动合并到前端)' : '');
+  const useGoogle = !!process.env.GOOGLE_PLACES_API_KEY;
 
-  // 0) 备份 recommendations_best 到 recommendations_fallback（兜底）
+  ensureSchema();
+  console.log('[refresh] 开始，城市:', cities.join(', '), dryRun ? '(dry-run)' : '', replace ? '(--replace)' : '', autoMerge ? '(--auto-merge)' : '', useGoogle ? '(Google Places)' : '(无 Google Key)');
+
   if (!dryRun) {
     const backed = backupToFallback();
     console.log('[refresh] 已备份', backed, '城到兜底表');
   }
 
-  // 1) Wikidata 米其林（一次性拉取，按 cityKey 分组）
+  // 1. Wikidata 米其林
   let michelinByCity = {};
   try {
     const michelin = await queryMichelinRestaurantsJapan(150);
@@ -92,90 +85,95 @@ async function main() {
     console.warn('[refresh] Wikidata 失败', e?.message);
   }
 
+  let crawlCityViaGoogle = null;
+  let getPlaceDetails = null;
+  let downloadPhoto = null;
+  let searchRestaurants = null;
+  if (useGoogle) {
+    const gp = await import('../services/crawlers/googlePlaces.js');
+    crawlCityViaGoogle = gp.crawlCityViaGoogle;
+    getPlaceDetails = gp.getPlaceDetails;
+    downloadPhoto = gp.downloadPhoto;
+    searchRestaurants = gp.searchRestaurants;
+  }
+
   const allResults = [];
 
   for (const cityKey of cities) {
-    if (!JP_CITIES.includes(cityKey)) {
-      console.log('[refresh] 跳过', cityKey);
-      continue;
-    }
+    if (!JP_CITIES.includes(cityKey)) { console.log('[refresh] 跳过', cityKey); continue; }
+
     try {
       const cityZh = getCityZh(cityKey);
+      const nameSet = new Set();
+      const combined = [];
 
-      // 2) 爬取：Tabelog（8 城用 crawlTabelogCity，other 用 crawlTabelogOther）
-      let crawled = [];
-      if (cityKey === 'other') {
-        crawled = await crawlTabelogOther(TARGET + 5);
-      } else {
-        crawled = await crawlTabelogCity(cityKey, TARGET + 5);
-      }
-
-      // 3) 合并 Wikidata 米其林（同城）
+      // 米其林排前
       const michelinList = michelinByCity[cityKey] || [];
-      const nameSet = new Set(crawled.map((r) => normName(r.name)));
       for (const m of michelinList) {
         const n = normName(m.name);
         if (!n || nameSet.has(n)) continue;
         nameSet.add(n);
-        crawled.push({
-          name: m.name,
-          phone: m.phone || '',
-          address: m.address || '',
-          city: m.city || cityZh,
-          cityKey,
-          wikidata_id: m.wikidata_id || '',
-          feature: m.feature || '米其林指南',
-          call_lang: 'ja',
-        });
-      }
 
-      if (crawled.length === 0) {
-        console.log('[refresh]', cityKey, '无新数据');
-        continue;
-      }
+        let image = '', phone = m.phone || '', address = m.address || '';
+        let opening_hours = '', google_place_id = '', google_rating = 0;
 
-      let list = crawled.map((r) => ({
-        id: `${cityKey}-${normName(r.name).slice(0, 20)}`,
-        country: 'jp',
-        cityKey,
-        name: r.name,
-        city: r.city || cityZh,
-        phone: r.phone || '',
-        address: r.address || '',
-        feature: r.feature || '高评价餐厅',
-        call_lang: r.call_lang || 'ja',
-        image: '',
-        tabelog_url: r.tabelog_url || '',
-        wikidata_id: r.wikidata_id || '',
-      }));
-
-      list = filterListByCityKey(list, cityKey);
-      if (cityKey === 'other') list = filterOtherCityList(list);
-
-      // 4) 补图（含本地化）
-      try {
-        const mediaMap = await resolveRestaurantMediaBatch({
-          cityZh,
-          restaurants: list,
-          budgetMs: 12000,
-        });
-        for (const r of list) {
-          const m = mediaMap.get(normalizeKey(r.name));
-          if (m?.image_url && !isFallbackImage(m.image_url)) r.image = m.image_url;
-          if (m?.tabelog_url && !r.tabelog_url) r.tabelog_url = m.tabelog_url;
+        if (useGoogle) {
+          try {
+            const hits = await searchRestaurants(cityKey, `${m.name} restaurant ${cityZh}`, 1);
+            if (hits.length > 0) {
+              google_place_id = hits[0].place_id;
+              const details = await getPlaceDetails(hits[0].place_id);
+              if (details) {
+                phone = details.phone || phone;
+                address = details.address || address;
+                opening_hours = details.opening_hours || '';
+                google_rating = details.rating || 0;
+                const photoRef = details.photo_reference || hits[0].photo_reference;
+                if (photoRef) image = await downloadPhoto(photoRef, `michelin_${cityKey}_${hits[0].place_id}`);
+              }
+            }
+          } catch (e) {
+            console.warn(`[refresh] Google michelin ${m.name}:`, e?.message);
+          }
         }
-      } catch (e) {
-        console.warn('[refresh] 补图失败', cityKey, e?.message);
+
+        combined.push({
+          id: `m_${m.wikidata_id || n.slice(0, 20)}`,
+          country: 'jp', cityKey, name: m.name, city: m.city || cityZh,
+          phone, address, image, feature: m.feature || '米其林指南',
+          call_lang: 'ja', source: 'michelin',
+          wikidata_id: m.wikidata_id || '', google_place_id, google_rating, opening_hours,
+        });
       }
 
-      // 5) 写入爬取数据到 recommendations_crawled（供后台查看、补封面、确认）
-      const noCover = list.filter((r) => !r.image || isFallbackImage(r.image)).length;
+      // Google Places 填充
+      if (useGoogle) {
+        const remaining = Math.max(0, TARGET - combined.length);
+        if (remaining > 0) {
+          try {
+            const googleList = await crawlCityViaGoogle(cityKey, remaining + 5);
+            for (const g of googleList) {
+              if (combined.length >= TARGET) break;
+              const n = normName(g.name);
+              if (nameSet.has(n)) continue;
+              nameSet.add(n);
+              combined.push({ ...g, country: 'jp', cityKey, city: cityZh });
+            }
+          } catch (e) {
+            console.warn(`[refresh] Google Places ${cityKey}:`, e?.message);
+          }
+        }
+      }
+
+      if (combined.length === 0) { console.log('[refresh]', cityKey, '无新数据'); continue; }
+
+      let list = filterListByCityKey(combined, cityKey);
+
       if (!dryRun && list.length > 0) {
         writeCrawledRecommendations({ country: 'jp', cityKey, cityZh, restaurants: list });
-        console.log('[refresh]', cityKey, '爬取', list.length, '家，缺封面', noCover, '家 -> 已入库 recommendations_crawled');
+        console.log('[refresh]', cityKey, '爬取', list.length, '家 -> 已入库 crawled');
       }
 
-      // 6) --auto-merge 时合并到 recommendations_best（否则需后台人工确认后进入前端）
       let final;
       if (autoMerge) {
         if (replace) {
@@ -183,8 +181,7 @@ async function main() {
         } else {
           const best = readBestRecommendations({ country: 'jp', cityKey });
           const existing = best?.restaurants ? applyBestMediaOverlay({ restaurants: best.restaurants, cityZh }) : [];
-          const merged = mergeWithExisting(existing, list, cityKey, cityZh);
-          final = merged.slice(0, TARGET);
+          final = mergeWithExisting(existing, list, cityKey, cityZh);
         }
         allResults.push({ cityKey, count: final.length, total: list.length });
         if (!dryRun && final.length > 0) {
@@ -193,12 +190,10 @@ async function main() {
         }
       } else {
         allResults.push({ cityKey, count: 0, total: list.length });
-        if (!dryRun) {
-          console.log('[refresh]', cityKey, '已入库，需后台确认后进入前端展示');
-        }
+        if (!dryRun) console.log('[refresh]', cityKey, '已入库，需后台确认后进入前端展示');
       }
 
-      await new Promise((r) => setTimeout(r, 3000));
+      await new Promise((r) => setTimeout(r, 1000));
     } catch (e) {
       console.error('[refresh]', cityKey, 'error:', e?.message);
     }
@@ -206,12 +201,9 @@ async function main() {
 
   if (!dryRun && autoMerge && allResults.some((r) => r.count > 0)) {
     clearRecommendationsCache();
-    console.log('[refresh] 已清理内存缓存，前端将读取最新数据');
+    console.log('[refresh] 已清理内存缓存');
   }
   console.log('[refresh] 完成', allResults);
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+main().catch((e) => { console.error(e); process.exit(1); });

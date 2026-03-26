@@ -184,6 +184,21 @@ export function AdminMediaCover({ apiBase = API, adminToken }) {
     }
   };
 
+  const handleDeleteBest = async (cityKey, name) => {
+    if (!confirm(`确认从前端展示中删除「${name}」？`)) return;
+    try {
+      const res = await fetch(`${apiBase}/admin/shops/best/delete`, {
+        method: 'POST',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ cityKey, name }),
+      });
+      await assertOkJson(res, '删除失败');
+      fetchDisplay();
+    } catch (e) {
+      alert(e.message || '删除失败');
+    }
+  };
+
   const coverSourceLabel = (src) => {
     if (src === 'manual') return { text: '手动', cls: 'badge-green' };
     if (src === 'auto') return { text: '自动', cls: 'badge-blue' };
@@ -266,31 +281,36 @@ export function AdminMediaCover({ apiBase = API, adminToken }) {
                       {r.address && <span className="admin-media-address">{r.address}</span>}
                       {r.feature && <span className="admin-media-feature">{r.feature}</span>}
                     </div>
-                    {needFill && (
-                      <div className="admin-media-form">
-                        <input
-                          type="text"
-                          placeholder="https://... 或 /api/manual-covers/..."
-                          value={url}
-                          onChange={(e) => updateUrl(group.cityKey, r.name, e.target.value)}
-                          className="admin-media-input"
-                        />
-                        <button
-                          type="button" className="btn-primary"
-                          disabled={uploadingKey === key}
-                          onClick={() => handleUploadCover(group.cityKey, r.name)}
-                        >
-                          {uploadingKey === key ? '上传中…' : '上传图片'}
-                        </button>
-                        <button
-                          type="button" className="btn-primary"
-                          disabled={saving}
-                          onClick={() => handleSave(group.cityKey, r.name, url)}
-                        >
-                          {saving ? '保存中…' : '保存'}
-                        </button>
-                      </div>
-                    )}
+                    <div className="admin-media-form">
+                      {needFill && (
+                        <>
+                          <input
+                            type="text"
+                            placeholder="https://... 或 /api/manual-covers/..."
+                            value={url}
+                            onChange={(e) => updateUrl(group.cityKey, r.name, e.target.value)}
+                            className="admin-media-input"
+                          />
+                          <button
+                            type="button" className="btn-primary"
+                            disabled={uploadingKey === key}
+                            onClick={() => handleUploadCover(group.cityKey, r.name)}
+                          >
+                            {uploadingKey === key ? '上传中…' : '上传图片'}
+                          </button>
+                          <button
+                            type="button" className="btn-primary"
+                            disabled={saving}
+                            onClick={() => handleSave(group.cityKey, r.name, url)}
+                          >
+                            {saving ? '保存中…' : '保存'}
+                          </button>
+                        </>
+                      )}
+                      <button type="button" className="btn-danger" onClick={() => handleDeleteBest(group.cityKey, r.name)}>
+                        删除
+                      </button>
+                    </div>
                   </li>
                 );
               })}

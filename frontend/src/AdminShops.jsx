@@ -233,6 +233,23 @@ export function AdminShops({ apiBase, adminToken }) {
     }
   };
 
+  const handleDelete = async (target, cityKey, name) => {
+    if (!confirm(`确认删除「${name}」？`)) return;
+    try {
+      const res = await fetch(`${apiBase}/admin/shops/${target}/delete`, {
+        method: 'POST',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ cityKey, name }),
+      });
+      await assertOkJson(res, '删除失败');
+      if (target === 'fallback') fetchFallback();
+      else if (target === 'crawled') fetchCrawled();
+      else fetchAll();
+    } catch (e) {
+      alert(e.message || '删除失败');
+    }
+  };
+
   const dayName = (d) => ['日', '一', '二', '三', '四', '五', '六'][d] || d;
   const fallbackHasData = fallbackItems.some((g) => g.restaurants?.length > 0);
 
@@ -325,6 +342,9 @@ export function AdminShops({ apiBase, adminToken }) {
                               onClick={() => handleSaveFallback(g.cityKey, r.name, url || r.image, addr, phone)}>
                               {saving ? '保存中…' : '保存'}
                             </button>
+                            <button type="button" className="btn-danger" onClick={() => handleDelete('fallback', g.cityKey, r.name)}>
+                              删除
+                            </button>
                           </div>
                         </li>
                       );
@@ -368,79 +388,105 @@ export function AdminShops({ apiBase, adminToken }) {
           </div>
 
           <p className="admin-desc">
-            爬取数据来自 Tabelog/Wikidata，请核实电话、地址、封面图等信息。确认无误后选择店铺点击「确认进入前端展示」，
+            爬取数据来自 Wikidata 米其林 + Google Places，请核实信息后选择店铺点击「确认进入前端展示」。
             系统会自动将当前前端数据备份到兜底表，然后写入新数据。
           </p>
 
-          {crawledItems.map((g) => (
-            <div key={g.cityKey} className="admin-media-city">
-              <h3>
-                {g.cityZh}（{g.cityKey}）
-                {g.noCoverCount > 0 && (
-                  <span className="admin-media-badge" style={{ background: '#fef3c7', color: '#92400e' }}>
-                    缺封面 {g.noCoverCount} 家
-                  </span>
+          {crawledItems.map((g) => {
+            const michelinList = (g.restaurants || []).filter((r) => r.source === 'michelin');
+            const googleList = (g.restaurants || []).filter((r) => r.source !== 'michelin');
+            const groups = [];
+            if (michelinList.length > 0) groups.push({ label: '米其林餐厅', list: michelinList });
+            if (googleList.length > 0) groups.push({ label: 'Google 高评分餐厅', list: googleList });
+            if (groups.length === 0 && g.restaurants?.length > 0) groups.push({ label: '餐厅列表', list: g.restaurants });
+
+            return (
+              <div key={g.cityKey} className="admin-media-city">
+                <h3>
+                  {g.cityZh}（{g.cityKey}）
+                  {g.noCoverCount > 0 && (
+                    <span className="admin-media-badge" style={{ background: '#fef3c7', color: '#92400e' }}>
+                      缺封面 {g.noCoverCount} 家
+                    </span>
+                  )}
+                  {g.crawledAt && <span className="admin-media-count"> 爬取于 {g.crawledAt}</span>}
+                </h3>
+                {!g.restaurants?.length ? (
+                  <p className="admin-media-empty">暂无爬取数据，请点击上方「立即执行爬虫」</p>
+                ) : (
+                  <>
+                    <div className="admin-actions" style={{ marginBottom: 8 }}>
+                      <button type="button" className="btn-outline" onClick={() => selectAllInCity(g.cityKey, g.restaurants)}>
+                        全选（最多10家）
+                      </button>
+                      <button type="button" className="btn-primary" disabled={confirmingCity === g.cityKey}
+                        onClick={() => handleConfirm(g.cityKey)}>
+                        {confirmingCity === g.cityKey ? '确认中…' : '确认进入前端展示'}
+                      </button>
+                    </div>
+                    {groups.map((group) => (
+                      <div key={group.label}>
+                        {groups.length > 1 && (
+                          <h4 style={{ margin: '12px 0 6px', fontSize: '0.9rem', color: '#374151', borderBottom: '1px solid #e5e7eb', paddingBottom: 4 }}>
+                            {group.label === '米其林餐厅' ? '⭐ ' : ''}{group.label}（{group.list.length} 家）
+                          </h4>
+                        )}
+                        <ul className="admin-media-list">
+                          {group.list.map((r) => {
+                            const key = `${g.cityKey}|${r.name}`;
+                            const url = urlByKey[key] ?? '';
+                            const saving = savingKey === key;
+                            const checked = (selectedIds[g.cityKey] || []).includes(r.id);
+                            return (
+                              <li key={r.id || key} className="admin-media-row">
+                                <input type="checkbox" checked={checked} onChange={() => toggleSelected(g.cityKey, r.id)}
+                                  style={{ marginRight: 8 }} />
+                                <div className="admin-media-thumb">
+                                  <img src={r.image || FALLBACK_IMG} alt="" />
+                                </div>
+                                <div className="admin-media-info">
+                                  <strong>{r.name}</strong>
+                                  {r.source === 'michelin' && <span className="admin-cover-badge badge-green">米其林</span>}
+                                  {r.source === 'google' && r.google_rating && (
+                                    <span className="admin-cover-badge badge-blue">Google {r.google_rating}</span>
+                                  )}
+                                  {!r.has_cover && (
+                                    <span className="admin-media-feature" style={{ color: '#dc2626' }}>缺封面</span>
+                                  )}
+                                  {r.phone && <span className="admin-media-address">TEL: {r.phone}</span>}
+                                  <span className="admin-media-address">{r.address}</span>
+                                  {r.opening_hours && (
+                                    <span className="admin-media-feature" style={{ fontSize: 11, color: '#6b7280' }}>{r.opening_hours}</span>
+                                  )}
+                                  <span className="admin-media-feature">{r.feature}</span>
+                                </div>
+                                <div className="admin-media-form">
+                                  <input type="text" placeholder="补封面 URL" value={url}
+                                    onChange={(e) => updateUrl(g.cityKey, r.name, e.target.value)}
+                                    className="admin-media-input" />
+                                  <button type="button" className="btn-primary" disabled={uploadingKey === key}
+                                    onClick={() => handleUploadCover(g.cityKey, r.name)}>
+                                    {uploadingKey === key ? '上传中…' : '上传'}
+                                  </button>
+                                  <button type="button" className="btn-primary" disabled={saving}
+                                    onClick={() => handleSaveCover(g.cityKey, r.name, url)}>
+                                    {saving ? '保存中…' : '保存封面'}
+                                  </button>
+                                  <button type="button" className="btn-danger" onClick={() => handleDelete('crawled', g.cityKey, r.name)}>
+                                    删除
+                                  </button>
+                                </div>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    ))}
+                  </>
                 )}
-                {g.crawledAt && <span className="admin-media-count"> 爬取于 {g.crawledAt}</span>}
-              </h3>
-              {!g.restaurants?.length ? (
-                <p className="admin-media-empty">暂无爬取数据，请点击上方「立即执行爬虫」</p>
-              ) : (
-                <>
-                  <div className="admin-actions" style={{ marginBottom: 8 }}>
-                    <button type="button" className="btn-outline" onClick={() => selectAllInCity(g.cityKey, g.restaurants)}>
-                      全选（最多10家）
-                    </button>
-                    <button type="button" className="btn-primary" disabled={confirmingCity === g.cityKey}
-                      onClick={() => handleConfirm(g.cityKey)}>
-                      {confirmingCity === g.cityKey ? '确认中…' : '确认进入前端展示'}
-                    </button>
-                  </div>
-                  <ul className="admin-media-list">
-                    {g.restaurants.map((r) => {
-                      const key = `${g.cityKey}|${r.name}`;
-                      const url = urlByKey[key] ?? '';
-                      const saving = savingKey === key;
-                      const checked = (selectedIds[g.cityKey] || []).includes(r.id);
-                      return (
-                        <li key={r.id || key} className="admin-media-row">
-                          <input type="checkbox" checked={checked} onChange={() => toggleSelected(g.cityKey, r.id)}
-                            style={{ marginRight: 8 }} />
-                          <div className="admin-media-thumb">
-                            <img src={r.image || FALLBACK_IMG} alt="" />
-                          </div>
-                          <div className="admin-media-info">
-                            <strong>{r.name}</strong>
-                            {!r.has_cover && (
-                              <span className="admin-media-feature" style={{ color: '#dc2626' }}>缺封面</span>
-                            )}
-                            <span className="admin-media-address">{r.address}</span>
-                            <span className="admin-media-feature">{r.feature}</span>
-                            {r.tabelog_url && (
-                              <a href={r.tabelog_url} target="_blank" rel="noreferrer" style={{ fontSize: 12 }}>Tabelog</a>
-                            )}
-                          </div>
-                          <div className="admin-media-form">
-                            <input type="text" placeholder="补封面 URL" value={url}
-                              onChange={(e) => updateUrl(g.cityKey, r.name, e.target.value)}
-                              className="admin-media-input" />
-                            <button type="button" className="btn-primary" disabled={uploadingKey === key}
-                              onClick={() => handleUploadCover(g.cityKey, r.name)}>
-                              {uploadingKey === key ? '上传中…' : '上传'}
-                            </button>
-                            <button type="button" className="btn-primary" disabled={saving}
-                              onClick={() => handleSaveCover(g.cityKey, r.name, url)}>
-                              {saving ? '保存中…' : '保存封面'}
-                            </button>
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </>
-              )}
-            </div>
-          ))}
+              </div>
+            );
+          })}
         </div>
       )}
 
