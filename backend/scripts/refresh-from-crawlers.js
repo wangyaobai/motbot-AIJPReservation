@@ -1,5 +1,5 @@
 /**
- * 从 Wikidata 米其林 + Google Places 爬取餐厅。
+ * 从 Wikidata 米其林 + OpenStreetMap（Overpass）爬取餐厅。
  * - 默认：备份 recommendations_best 到兜底表，爬取写入 recommendations_crawled，需后台确认后进入前端
  * - --auto-merge：自动合并到 recommendations_best（适合 crontab）
  * - --replace：与 --auto-merge 联用时完全覆盖，不保留旧数据
@@ -10,6 +10,8 @@
  *   node scripts/refresh-from-crawlers.js --dry-run
  *   node scripts/refresh-from-crawlers.js --auto-merge
  *   node scripts/refresh-from-crawlers.js --auto-merge --replace
+ *
+ * 可选环境变量：OVERPASS_API_URL（默认 https://overpass-api.de/api/interpreter）
  */
 import 'dotenv/config';
 import { ensureSchema } from '../db.js';
@@ -25,6 +27,7 @@ import {
 } from '../services/recommendationsStore.js';
 import { clearRecommendationsCache } from '../routes/recommendations.js';
 import { queryMichelinRestaurantsJapan } from '../services/crawlers/wikidata-michelin.js';
+import { fetchOsmRestaurantPool, findOsmMatchForMichelin } from '../services/crawlers/openStreetMap.js';
 
 const JP_CITIES = ['tokyo', 'osaka', 'kyoto', 'nagoya', 'kobe', 'hokkaido', 'okinawa', 'kyushu'];
 const TARGET = 15;
@@ -61,17 +64,14 @@ async function main() {
   const cityArg = args.find((a) => a.startsWith('--city='));
   const cities = cityArg ? [cityArg.split('=')[1]] : JP_CITIES;
 
-  const useGoogle = !!process.env.GOOGLE_PLACES_API_KEY;
-
   ensureSchema();
-  console.log('[refresh] 开始，城市:', cities.join(', '), dryRun ? '(dry-run)' : '', replace ? '(--replace)' : '', autoMerge ? '(--auto-merge)' : '', useGoogle ? '(Google Places)' : '(无 Google Key)');
+  console.log('[refresh] 开始，城市:', cities.join(', '), dryRun ? '(dry-run)' : '', replace ? '(--replace)' : '', autoMerge ? '(--auto-merge)' : '', '(Wikidata + OSM)');
 
   if (!dryRun) {
     const backed = backupToFallback();
     console.log('[refresh] 已备份', backed, '城到兜底表');
   }
 
-  // 1. Wikidata 米其林
   let michelinByCity = {};
   try {
     const michelin = await queryMichelinRestaurantsJapan(150);
@@ -85,18 +85,6 @@ async function main() {
     console.warn('[refresh] Wikidata 失败', e?.message);
   }
 
-  let crawlCityViaGoogle = null;
-  let getPlaceDetails = null;
-  let downloadPhoto = null;
-  let searchRestaurants = null;
-  if (useGoogle) {
-    const gp = await import('../services/crawlers/googlePlaces.js');
-    crawlCityViaGoogle = gp.crawlCityViaGoogle;
-    getPlaceDetails = gp.getPlaceDetails;
-    downloadPhoto = gp.downloadPhoto;
-    searchRestaurants = gp.searchRestaurants;
-  }
-
   const allResults = [];
 
   for (const cityKey of cities) {
@@ -107,34 +95,29 @@ async function main() {
       const nameSet = new Set();
       const combined = [];
 
-      // 米其林排前
+      let osmPool = [];
+      try {
+        osmPool = await fetchOsmRestaurantPool(cityKey, 400);
+      } catch (e) {
+        console.warn(`[refresh] OSM ${cityKey}:`, e?.message);
+      }
+
       const michelinList = michelinByCity[cityKey] || [];
       for (const m of michelinList) {
         const n = normName(m.name);
         if (!n || nameSet.has(n)) continue;
         nameSet.add(n);
 
-        let image = '', phone = m.phone || '', address = m.address || '';
-        let opening_hours = '', google_place_id = '', google_rating = 0;
-
-        if (useGoogle) {
-          try {
-            const hits = await searchRestaurants(cityKey, `${m.name} restaurant ${cityZh}`, 1);
-            if (hits.length > 0) {
-              google_place_id = hits[0].place_id;
-              const details = await getPlaceDetails(hits[0].place_id);
-              if (details) {
-                phone = details.phone || phone;
-                address = details.address || address;
-                opening_hours = details.opening_hours || '';
-                google_rating = details.rating || 0;
-                const photoRef = details.photo_reference || hits[0].photo_reference;
-                if (photoRef) image = await downloadPhoto(photoRef, `michelin_${cityKey}_${hits[0].place_id}`);
-              }
-            }
-          } catch (e) {
-            console.warn(`[refresh] Google michelin ${m.name}:`, e?.message);
-          }
+        const match = findOsmMatchForMichelin(m.name, osmPool);
+        let image = '';
+        let phone = m.phone || '';
+        let address = m.address || '';
+        let opening_hours = '';
+        if (match) {
+          phone = match.phone || phone;
+          address = match.address || address;
+          opening_hours = match.opening_hours || '';
+          image = match.image || '';
         }
 
         combined.push({
@@ -142,27 +125,17 @@ async function main() {
           country: 'jp', cityKey, name: m.name, city: m.city || cityZh,
           phone, address, image, feature: m.feature || '米其林指南',
           call_lang: 'ja', source: 'michelin',
-          wikidata_id: m.wikidata_id || '', google_place_id, google_rating, opening_hours,
+          wikidata_id: m.wikidata_id || '', google_place_id: '', google_rating: 0, opening_hours,
+          osm_type: match?.osm_type || '', osm_id: match?.osm_id || '',
         });
       }
 
-      // Google Places 填充
-      if (useGoogle) {
-        const remaining = Math.max(0, TARGET - combined.length);
-        if (remaining > 0) {
-          try {
-            const googleList = await crawlCityViaGoogle(cityKey, remaining + 5);
-            for (const g of googleList) {
-              if (combined.length >= TARGET) break;
-              const n = normName(g.name);
-              if (nameSet.has(n)) continue;
-              nameSet.add(n);
-              combined.push({ ...g, country: 'jp', cityKey, city: cityZh });
-            }
-          } catch (e) {
-            console.warn(`[refresh] Google Places ${cityKey}:`, e?.message);
-          }
-        }
+      for (const r of osmPool) {
+        if (combined.length >= TARGET) break;
+        const n = normName(r.name);
+        if (!n || nameSet.has(n)) continue;
+        nameSet.add(n);
+        combined.push({ ...r, country: 'jp', cityKey, city: cityZh });
       }
 
       if (combined.length === 0) { console.log('[refresh]', cityKey, '无新数据'); continue; }
@@ -193,7 +166,7 @@ async function main() {
         if (!dryRun) console.log('[refresh]', cityKey, '已入库，需后台确认后进入前端展示');
       }
 
-      await new Promise((r) => setTimeout(r, 1000));
+      await new Promise((r) => setTimeout(r, 1500));
     } catch (e) {
       console.error('[refresh]', cityKey, 'error:', e?.message);
     }

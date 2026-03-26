@@ -388,16 +388,16 @@ export function AdminShops({ apiBase, adminToken }) {
           </div>
 
           <p className="admin-desc">
-            爬取数据来自 Wikidata 米其林 + Google Places，请核实信息后选择店铺点击「确认进入前端展示」。
+            爬取数据来自 Wikidata 米其林 + OpenStreetMap（Overpass，免费开源），请核实信息后选择店铺点击「确认进入前端展示」。
             系统会自动将当前前端数据备份到兜底表，然后写入新数据。
           </p>
 
           {crawledItems.map((g) => {
             const michelinList = (g.restaurants || []).filter((r) => r.source === 'michelin');
-            const googleList = (g.restaurants || []).filter((r) => r.source !== 'michelin');
+            const osmList = (g.restaurants || []).filter((r) => r.source !== 'michelin');
             const groups = [];
             if (michelinList.length > 0) groups.push({ label: '米其林餐厅', list: michelinList });
-            if (googleList.length > 0) groups.push({ label: 'Google 高评分餐厅', list: googleList });
+            if (osmList.length > 0) groups.push({ label: 'OpenStreetMap 餐厅', list: osmList });
             if (groups.length === 0 && g.restaurants?.length > 0) groups.push({ label: '餐厅列表', list: g.restaurants });
 
             return (
@@ -447,7 +447,10 @@ export function AdminShops({ apiBase, adminToken }) {
                                 <div className="admin-media-info">
                                   <strong>{r.name}</strong>
                                   {r.source === 'michelin' && <span className="admin-cover-badge badge-green">米其林</span>}
-                                  {r.source === 'google' && r.google_rating && (
+                                  {r.source === 'osm' && (
+                                    <span className="admin-cover-badge badge-blue">OSM</span>
+                                  )}
+                                  {r.source === 'google' && r.google_rating > 0 && (
                                     <span className="admin-cover-badge badge-blue">Google {r.google_rating}</span>
                                   )}
                                   {!r.has_cover && (

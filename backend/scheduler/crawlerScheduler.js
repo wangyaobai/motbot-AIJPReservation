@@ -1,19 +1,18 @@
 /**
  * 每周自动执行爬虫调度器。
- * 数据源：Wikidata 米其林 + Google Places API（替代 Tabelog）。
+ * 数据源：Wikidata 米其林 + OpenStreetMap（Overpass API，免费）。
  * 爬取数据只写入 recommendations_crawled，不自动合并到 recommendations_best。
  * 需管理员在后台审核后手动确认才进入前端展示。
  *
  * 可通过 DISABLE_CRAWLER_SCHEDULER=1 关闭。
  * 可通过 CRAWLER_SCHEDULE_DAY=0-6 设置星期几（0=周日，默认0）。
  * 可通过 CRAWLER_SCHEDULE_HOUR=0-23 设置几点（默认3）。
+ * 可选 OVERPASS_API_URL 指定 Overpass 实例。
  */
 import { ensureSchema } from '../db.js';
 import {
   getCityZh,
   filterListByCityKey,
-  filterOtherCityList,
-  isFallbackImage,
   writeCrawledRecommendations,
 } from '../services/recommendationsStore.js';
 
@@ -44,24 +43,13 @@ export async function runCrawlerJob() {
   crawlerState.running = true;
   crawlerState.lastError = null;
   const startedAt = new Date().toISOString();
-  console.log('[crawler-scheduler] 开始执行爬虫（Wikidata 米其林 + Google Places）…');
-
-  const useGoogle = !!process.env.GOOGLE_PLACES_API_KEY;
+  console.log('[crawler-scheduler] 开始执行爬虫（Wikidata 米其林 + OpenStreetMap）…');
 
   try {
     ensureSchema();
 
     const { queryMichelinRestaurantsJapan } = await import('../services/crawlers/wikidata-michelin.js');
-
-    let crawlCityViaGoogle = null;
-    let getPlaceDetails = null;
-    let downloadPhoto = null;
-    if (useGoogle) {
-      const gp = await import('../services/crawlers/googlePlaces.js');
-      crawlCityViaGoogle = gp.crawlCityViaGoogle;
-      getPlaceDetails = gp.getPlaceDetails;
-      downloadPhoto = gp.downloadPhoto;
-    }
+    const { fetchOsmRestaurantPool, findOsmMatchForMichelin } = await import('../services/crawlers/openStreetMap.js');
 
     // 1. Wikidata 米其林餐厅名单
     let michelinByCity = {};
@@ -85,43 +73,30 @@ export async function runCrawlerJob() {
         const nameSet = new Set();
         const combined = [];
 
-        // 米其林餐厅排前面 (source: "michelin")
+        let osmPool = [];
+        try {
+          osmPool = await fetchOsmRestaurantPool(cityKey, 400);
+        } catch (e) {
+          console.warn(`[crawler-scheduler] OSM pool ${cityKey}:`, e?.message);
+        }
+
+        // 米其林餐厅排前面 (source: "michelin")，用 OSM 同店名匹配补电话/地址/营业时间/图
         const michelinList = michelinByCity[cityKey] || [];
         for (const m of michelinList) {
           const n = normName(m.name);
           if (!n || nameSet.has(n)) continue;
           nameSet.add(n);
 
+          const match = findOsmMatchForMichelin(m.name, osmPool);
           let image = '';
           let phone = m.phone || '';
           let address = m.address || '';
           let opening_hours = '';
-          let google_place_id = '';
-          let google_rating = 0;
-
-          // 用 Google Places 补充米其林餐厅的详细信息和照片
-          if (useGoogle) {
-            try {
-              const { searchRestaurants } = await import('../services/crawlers/googlePlaces.js');
-              const hits = await searchRestaurants(cityKey, `${m.name} restaurant ${cityZh}`, 1);
-              if (hits.length > 0) {
-                const hit = hits[0];
-                google_place_id = hit.place_id;
-                const details = await getPlaceDetails(hit.place_id);
-                if (details) {
-                  phone = details.phone || phone;
-                  address = details.address || address;
-                  opening_hours = details.opening_hours || '';
-                  google_rating = details.rating || 0;
-                  const photoRef = details.photo_reference || hit.photo_reference;
-                  if (photoRef) {
-                    image = await downloadPhoto(photoRef, `michelin_${cityKey}_${hit.place_id}`);
-                  }
-                }
-              }
-            } catch (e) {
-              console.warn(`[crawler-scheduler] Google lookup for michelin ${m.name}:`, e?.message);
-            }
+          if (match) {
+            phone = match.phone || phone;
+            address = match.address || address;
+            opening_hours = match.opening_hours || '';
+            image = match.image || '';
           }
 
           combined.push({
@@ -133,34 +108,26 @@ export async function runCrawlerJob() {
             call_lang: 'ja',
             source: 'michelin',
             wikidata_id: m.wikidata_id || '',
-            google_place_id,
-            google_rating,
+            google_place_id: '',
+            google_rating: 0,
             opening_hours,
+            osm_type: match?.osm_type || '',
+            osm_id: match?.osm_id || '',
           });
         }
 
-        // Google Places 高评分餐厅填充 (source: "google")
-        if (useGoogle) {
-          const remaining = Math.max(0, TARGET - combined.length);
-          if (remaining > 0) {
-            try {
-              const googleList = await crawlCityViaGoogle(cityKey, remaining + 5);
-              for (const g of googleList) {
-                if (combined.length >= TARGET) break;
-                const n = normName(g.name);
-                if (nameSet.has(n)) continue;
-                nameSet.add(n);
-                combined.push({
-                  ...g,
-                  country: 'jp',
-                  cityKey,
-                  city: cityZh,
-                });
-              }
-            } catch (e) {
-              console.warn(`[crawler-scheduler] Google Places for ${cityKey}:`, e?.message);
-            }
-          }
+        // OSM 餐厅按完整度排序填充剩余名额 (source: "osm")
+        for (const r of osmPool) {
+          if (combined.length >= TARGET) break;
+          const n = normName(r.name);
+          if (!n || nameSet.has(n)) continue;
+          nameSet.add(n);
+          combined.push({
+            ...r,
+            country: 'jp',
+            cityKey,
+            city: cityZh,
+          });
         }
 
         if (combined.length === 0) {

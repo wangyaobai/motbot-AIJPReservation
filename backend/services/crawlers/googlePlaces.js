@@ -1,3 +1,7 @@
+/**
+ * 可选：Google Places API（需 GOOGLE_PLACES_API_KEY）。
+ * 主爬虫已改为 Wikidata + OpenStreetMap；本文件保留供日后需要时接入。
+ */
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
