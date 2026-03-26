@@ -14,6 +14,7 @@ import { optionalAuth } from './middleware/auth.js';
 import { startRetryCallScheduler } from './scheduler/retryCall.js';
 import { startCrawlerScheduler } from './scheduler/crawlerScheduler.js';
 import { runBuildPreloadAll } from './services/buildPreload.js';
+import { backupToFallback, readFallbackRecommendations, readBestRecommendations } from './services/recommendationsStore.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -29,6 +30,18 @@ if (process.env.DISABLE_CRAWLER_SCHEDULER !== '1') {
   startCrawlerScheduler();
 } else {
   console.warn('[server] crawler scheduler disabled by DISABLE_CRAWLER_SCHEDULER=1');
+}
+
+// 自动初始化兜底数据：如果 fallback 为空但 best 有数据，自动备份一次
+try {
+  const hasFallback = readFallbackRecommendations({ country: 'jp', cityKey: 'tokyo' });
+  const hasBest = readBestRecommendations({ country: 'jp', cityKey: 'tokyo' });
+  if (!hasFallback && hasBest) {
+    const count = backupToFallback();
+    console.log(`[init] 兜底表为空，已自动从 best 备份 ${count} 个城市到 fallback`);
+  }
+} catch (e) {
+  console.warn('[init] 自动备份兜底数据失败', e?.message);
 }
 
 const app = express();
