@@ -81,10 +81,12 @@ export default async function recordingHandler(body) {
   const existingCallResult = (order.call_result || '').trim().toLowerCase();
   const isFullBooked = existingCallResult === 'full' || /已约满|约满|满席|いっぱい|満席/.test(summaryText || '');
   const isRetry = existingCallResult === 'retry';
-  const finalStatus = isFullBooked ? 'failed' : (isRetry ? 'failed' : 'completed');
+  const summaryIndicatesFailure = /失败|未成功|无法预约|拒绝|已约满|约满|满席/.test(summaryText || '');
+  const retryActuallySucceeded = isRetry && !isFullBooked && !summaryIndicatesFailure;
+  const finalStatus = isFullBooked ? 'failed' : (isRetry ? (retryActuallySucceeded ? 'completed' : 'failed') : 'completed');
   if (isFullBooked) {
     appendAiCallLog(order.id, 'AI拨打已接通，店家反馈已约满，本次订单已结束。您可以再次尝试发起新的预约时间或预约其他餐厅。');
-  } else if (isRetry) {
+  } else if (isRetry && !retryActuallySucceeded) {
     appendAiCallLog(order.id, 'AI拨打已接通，但未获得店家明确预约成功确认，本次订单已结束。');
   } else {
     const d = order.booking_date || '';
