@@ -1,0 +1,18 @@
+---
+description: 本仓库推送到 GitHub 的方式（SSH + 权限）
+alwaysApply: true
+---
+
+# Git 推送到 GitHub
+
+- **远程仓库**：`origin` 应使用 **SSH**，不要用 HTTPS（避免 401 / 无法交互输入密码）。
+  - 正确：`git@github.com:wangyaobai/motbot-AIJPReservation.git`
+  - 若发现仍是 `https://github.com/...`，先执行：  
+    `git remote set-url origin git@github.com:wangyaobai/motbot-AIJPReservation.git`
+
+- **用户要求「提交 / 推送到 GitHub」时**：
+  1. 在仓库根目录执行 `git status`；有改动则 `git add` + `git commit -m "..."`。
+  2. 执行 `git push origin main`。
+  3. 使用终端工具推送时须申请 **`all` 权限**（以便使用本机 SSH agent / 密钥；沙箱内 HTTPS 无凭据会失败）。
+
+- **部署**：推送成功后，阿里云 ECS 上常规流程为 `git pull origin main` → `backend/npm ci` → 根目录 `npm run build` → `pm2 restart`（或运行 `scripts/deploy-aliyun.sh`）。
